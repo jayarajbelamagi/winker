@@ -30,6 +30,7 @@ const __dirname = path.resolve();
 app.set("trust proxy", 1);
 
 // CORS — comma-separated origins: production Vercel URL + optional preview URLs
+// CORS — FIXED VERSION
 const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:3000")
 	.split(",")
 	.map((s) => s.trim())
@@ -38,10 +39,21 @@ const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:3000")
 app.use(
 	cors({
 		origin(origin, callback) {
+			// allow server-to-server or Postman
 			if (!origin) return callback(null, true);
-			if (allowedOrigins.includes(origin)) return callback(null, true);
+
+			// 🔥 allow all if "*" is set
+			if (allowedOrigins.includes("*")) {
+				return callback(null, true);
+			}
+
+			// allow specific origins
+			if (allowedOrigins.includes(origin)) {
+				return callback(null, true);
+			}
+
 			console.warn(`CORS blocked origin: ${origin}`);
-			return callback(null, false);
+			return callback(new Error("Not allowed by CORS"));
 		},
 		credentials: true,
 	})
