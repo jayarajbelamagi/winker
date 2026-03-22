@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { apiUrl } from "../../lib/api";
 
 const FollowingPage = () => {
   const { username } = useParams();
@@ -10,7 +11,9 @@ const FollowingPage = () => {
   useEffect(() => {
     const fetchFollowing = async () => {
       try {
-        const res = await fetch(`/api/users/${username}/following`);
+        const res = await fetch(apiUrl(`/api/users/${username}/following`), {
+          credentials: "include",
+        });
         const data = await res.json();
         setFollowing(data);
       } catch (error) {

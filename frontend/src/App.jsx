@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import HomePage from "./pages/home/HomePage";
@@ -5,6 +6,7 @@ import LoginPage from "./pages/auth/login/LoginPage";
 import SignUpPage from "./pages/auth/signup/SignUpPage";
 import NotificationPage from "./pages/notification/NotificationPage";
 import ProfilePage from "./pages/profile/ProfilePage";
+import ChatPage from "./pages/chat/ChatPage";
 
 import Sidebar from "./components/common/Sidebar";
 import RightPanel from "./components/common/RightPanel";
@@ -12,16 +14,19 @@ import RightPanel from "./components/common/RightPanel";
 import { Toaster } from "react-hot-toast";
 import { useQuery } from "@tanstack/react-query";
 import LoadingSpinner from "./components/common/LoadingSpinner";
+import { apiUrl } from "./lib/api";
 
 import FollowersPage from "./pages/FollowersFollowing/FollowersPage";
 import FollowingPage from "./pages/FollowersFollowing/FollowingPage";
 
 function App() {
+  const [showChat, setShowChat] = useState(false); // new state
+
   const { data: authUser, isLoading } = useQuery({
     queryKey: ["authUser"],
     queryFn: async () => {
       try {
-        const res = await fetch("/api/auth/me");
+        const res = await fetch(apiUrl("/api/auth/me"), { credentials: "include" });
         const data = await res.json();
         if (data.error) return null;
         if (!res.ok) {
@@ -45,10 +50,10 @@ function App() {
   }
 
   return (
-    <div className="flex max-w-6xl mx-auto">
+    <div className="flex max-w-6xl mx-auto relative">
       {authUser && <Sidebar />}
       <Routes>
-        <Route path="/" element={authUser ? <HomePage /> : <Navigate to="/login" />} />
+        <Route path="/" element={authUser ? <HomePage authUser={authUser} /> : <Navigate to="/login" />} />
         <Route path="/login" element={!authUser ? <LoginPage /> : <Navigate to="/" />} />
         <Route path="/signup" element={!authUser ? <SignUpPage /> : <Navigate to="/" />} />
         <Route
@@ -69,8 +74,15 @@ function App() {
           path="/:username/following"
           element={authUser ? <FollowingPage /> : <Navigate to="/login" />}
         />
+
+        {/* Chat Route */}
+        <Route
+          path="/chat"
+          element={authUser ? <ChatPage authUser={authUser} /> : <Navigate to="/login" />}
+        />
       </Routes>
       {authUser && <RightPanel />}
+
       <Toaster />
     </div>
   );

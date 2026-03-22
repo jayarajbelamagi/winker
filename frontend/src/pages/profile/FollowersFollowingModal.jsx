@@ -1,10 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import FollowersFollowingSkeleton from "../../components/skeletons/FollowersFollowingSkeleton";
+import { apiUrl } from "../../lib/api";
 
 const FollowersFollowingModal = ({ username, type, closeModal }) => {
   const fetchList = async () => {
-    const res = await fetch(`/api/users/${type}/${username}`);
+    const res = await fetch(apiUrl(`/api/users/${type}/${username}`), {
+      credentials: "include",
+    });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Something went wrong");
     return data;

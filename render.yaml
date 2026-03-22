@@ -1,0 +1,17 @@
+# Render Blueprint — deploy the API from the `backend` folder.
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: twitter-clone-backend
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Add these in the Render dashboard (or link a secret store):
+      # MONGO_URI, JWT_SECRET, CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY,
+      # CLOUDINARY_API_SECRET, FRONTEND_URL, HF_API_KEY (optional, for chat)
