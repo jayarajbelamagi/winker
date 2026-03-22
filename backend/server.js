@@ -26,39 +26,43 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const __dirname = path.resolve();
 
-// Behind Render / reverse proxies (needed for secure cookies, IPs, etc.)
+// Behind proxy (Render)
 app.set("trust proxy", 1);
 
-// CORS — comma-separated origins: production Vercel URL + optional preview URLs
-// CORS — FIXED VERSION
+// 🔥 CORS CONFIG (FINAL FIX)
 const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:3000")
 	.split(",")
 	.map((s) => s.trim())
 	.filter(Boolean);
 
-app.use(
-	cors({
-		origin(origin, callback) {
-			// allow server-to-server or Postman
-			if (!origin) return callback(null, true);
+const corsOptions = {
+	origin(origin, callback) {
+		// allow server-to-server or Postman
+		if (!origin) return callback(null, true);
 
-			// 🔥 allow all if "*" is set
-			if (allowedOrigins.includes("*")) {
-				return callback(null, true);
-			}
+		// allow all if "*" is set
+		if (allowedOrigins.includes("*")) {
+			return callback(null, true);
+		}
 
-			// allow specific origins
-			if (allowedOrigins.includes(origin)) {
-				return callback(null, true);
-			}
+		// allow specific origins
+		if (allowedOrigins.includes(origin)) {
+			return callback(null, true);
+		}
 
-			console.warn(`CORS blocked origin: ${origin}`);
-			return callback(new Error("Not allowed by CORS"));
-		},
-		credentials: true,
-	})
-);
+		console.warn(`❌ CORS blocked: ${origin}`);
+		return callback(new Error("Not allowed by CORS"));
+	},
+	credentials: true,
+};
 
+// apply CORS
+app.use(cors(corsOptions));
+
+// 🔥 HANDLE PREFLIGHT (THIS WAS MISSING)
+app.options("*", cors(corsOptions));
+
+// middlewares
 app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -71,11 +75,13 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/stories", storyRoutes);
 app.use("/api/chat", chatRoutes);
 
+// test route
 app.get("/", (req, res) => {
 	res.send("Backend is running 🚀");
 });
 
+// start server
 app.listen(PORT, () => {
-	console.log(`Server is running on port ${PORT}`);
+	console.log(`🚀 Server running on port ${PORT}`);
 	connectMongoDB();
 });
