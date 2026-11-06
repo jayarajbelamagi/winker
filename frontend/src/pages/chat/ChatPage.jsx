@@ -1,6 +1,17 @@
 import { useState, useRef, useEffect } from "react";
 import toast from "react-hot-toast";
 import { apiFetch } from "../../lib/api";
+import { AiOutlineRobot, AiFillRobot } from "react-icons/ai";
+import { IoSend, IoCloseSharp } from "react-icons/io5";
+import { RiHistoryLine, RiAddLine } from "react-icons/ri";
+import { FaTrash } from "react-icons/fa";
+
+const SUGGESTIONS = [
+  "🔥 What's trending in India today?",
+  "🏏 Latest cricket & IPL updates",
+  "✍️ Write an engaging tweet about AI",
+  "🍿 Trending movies at the Indian box office",
+];
 
 const ChatPage = ({ authUser }) => {
   const [message, setMessage] = useState("");
@@ -8,6 +19,8 @@ const ChatPage = ({ authUser }) => {
   const [history, setHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
+
   const chatDivRef = useRef(null);
   const messageInputRef = useRef(null);
 
@@ -38,17 +51,21 @@ const ChatPage = ({ authUser }) => {
       setHistory(data.history || []);
     } catch (error) {
       console.error("Error loading history:", error);
-      toast.error("Failed to load chat history");
     } finally {
       setIsLoading(false);
     }
   }
 
-  async function sendMessage() {
-    const trimmedMessage = message.trim();
+  async function sendMessage(textToSend) {
+    const trimmedMessage = (textToSend || message).trim();
     if (!trimmedMessage || isSending) return;
 
     setIsSending(true);
+    setMessage("");
+
+    // Optimistically add user message
+    const tempChat = { userMessage: trimmedMessage, aiReply: null, _temp: true };
+    setHistory((prev) => [...prev, tempChat]);
 
     try {
       const res = await apiFetch("/api/chat/send", {
@@ -62,18 +79,18 @@ const ChatPage = ({ authUser }) => {
       if (!res.ok) throw new Error("Failed to send message");
       const data = await res.json();
 
-      // Add message to history
       if (data.chat) {
-        setHistory([...history, data.chat]);
+        setHistory((prev) => prev.map((c) => (c._temp ? data.chat : c)));
       }
-
-      setMessage("");
-      messageInputRef.current?.focus();
     } catch (error) {
       console.error("Error sending message:", error);
       toast.error(error.message || "Failed to send message");
+      setHistory((prev) => prev.filter((c) => !c._temp));
     } finally {
       setIsSending(false);
+      setTimeout(() => {
+        messageInputRef.current?.focus();
+      }, 50);
     }
   }
 
@@ -84,13 +101,17 @@ const ChatPage = ({ authUser }) => {
     }
   }
 
-  async function startNewChat() {
+  function startNewChat() {
     const newSessionId = generateSessionId();
     localStorage.setItem("chatSessionId", newSessionId);
     setSessionId(newSessionId);
     setHistory([]);
     setMessage("");
-    messageInputRef.current?.focus();
+    setIsHistoryDrawerOpen(false);
+    toast.success("New chat started");
+    setTimeout(() => {
+      messageInputRef.current?.focus();
+    }, 100);
   }
 
   async function clearAllHistory() {
@@ -98,14 +119,15 @@ const ChatPage = ({ authUser }) => {
 
     try {
       const res = await apiFetch(`/api/chat/clear?sessionId=${sessionId}`, {
-        method: "DELETE",
+        method: "POST",
       });
       if (!res.ok) throw new Error("Failed to clear history");
       setHistory([]);
+      setIsHistoryDrawerOpen(false);
       toast.success("Chat history cleared");
     } catch (error) {
       console.error("Error clearing history:", error);
-      toast.error("Failed to clear history");
+      toast.error("Failed to clear chat history");
     }
   }
 
@@ -114,332 +136,256 @@ const ChatPage = ({ authUser }) => {
     if (chatDivRef.current) {
       chatDivRef.current.scrollTop = chatDivRef.current.scrollHeight;
     }
-  }, [history]);
+  }, [history, isSending]);
 
   return (
-    <div style={styles.container}>
-      {/* Sidebar */}
-      <div style={styles.sidebar}>
-        <div style={styles.logo}>
-          <span style={{ fontSize: "28px" }}>⚡</span>
-          <div>Thook</div>
+    <div className="flex-1 min-w-0 flex flex-col md:flex-row w-full h-[calc(100vh-3rem)] md:h-screen bg-stone-950 text-white relative overflow-hidden pb-14 md:pb-0 border-r border-gray-700">
+      {/* DESKTOP SIDEBAR */}
+      <aside className="hidden md:flex flex-col w-64 bg-black/60 border-r border-gray-800 p-4 flex-shrink-0">
+        <div className="flex items-center gap-2 mb-6">
+          <span className="text-2xl text-sky-400">⚡</span>
+          <span className="font-bold text-xl tracking-tight bg-gradient-to-r from-sky-400 to-blue-500 bg-clip-text text-transparent">
+            Thook AI
+          </span>
         </div>
 
-        <button style={styles.newChatBtn} onClick={startNewChat}>
-          + New Chat
+        <button
+          onClick={startNewChat}
+          className="btn btn-primary rounded-xl btn-sm w-full gap-2 mb-4 text-white shadow-md shadow-sky-500/20"
+        >
+          <RiAddLine className="w-4 h-4" />
+          <span>New Chat</span>
         </button>
 
-        <div style={styles.historyTitle}>Chat History</div>
-        <div id="historyList" style={{ flex: 1, overflowY: "auto" }}>
-          {history.slice(-10).reverse().map((chat, idx) => (
-            <div key={idx} style={styles.historyItem} title={chat.userMessage}>
-              {chat.userMessage?.substring(0, 30)}...
-            </div>
-          ))}
+        <div className="text-xs uppercase tracking-wider text-stone-500 font-semibold mb-2">
+          Recent Queries
         </div>
 
-        <button style={styles.clearHistoryBtn} onClick={clearAllHistory}>
-          Clear History
-        </button>
-      </div>
-
-      {/* Main Chat Area */}
-      <div style={styles.mainContainer}>
-        <div style={styles.header}>
-          <h1 style={styles.headerH1}>Friendly AI Assistant</h1>
-          <p style={styles.headerP}>Ask me anything — I'll answer like a helpful friend.</p>
-        </div>
-
-        <div ref={chatDivRef} style={styles.chatDiv}>
+        <div className="flex-1 overflow-y-auto space-y-1.5 scrollbar-thin scrollbar-thumb-stone-800 pr-1">
           {history.length === 0 ? (
-            <div style={styles.welcome}>
-              <h2 style={styles.welcomeH2}>⚡ Thook</h2>
-              <p style={styles.welcomeP}>Your friendly assistant — concise, accurate, and here to help like a friend.</p>
+            <p className="text-xs text-stone-500 italic py-2">No queries in this session yet.</p>
+          ) : (
+            history
+              .slice(-10)
+              .reverse()
+              .map((chat, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => {
+                    setMessage(chat.userMessage);
+                    messageInputRef.current?.focus();
+                  }}
+                  className="p-2 text-xs text-stone-300 rounded-lg hover:bg-stone-800/80 cursor-pointer truncate transition"
+                  title={chat.userMessage}
+                >
+                  {chat.userMessage}
+                </div>
+              ))
+          )}
+        </div>
+
+        <button
+          onClick={clearAllHistory}
+          className="btn btn-outline btn-error btn-xs rounded-lg mt-3 w-full gap-1.5 opacity-80 hover:opacity-100"
+        >
+          <FaTrash className="w-3 h-3" />
+          <span>Clear History</span>
+        </button>
+      </aside>
+
+      {/* MOBILE HISTORY DRAWER */}
+      {isHistoryDrawerOpen && (
+        <div className="fixed inset-0 z-50 flex md:hidden">
+          <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setIsHistoryDrawerOpen(false)}
+          />
+          <div className="relative w-4/5 max-w-xs bg-stone-900 border-r border-stone-800 h-full p-4 flex flex-col z-10 shadow-2xl animate-in slide-in-from-left duration-200">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xl text-sky-400">⚡</span>
+                <span className="font-bold text-lg text-white">Thook History</span>
+              </div>
+              <button
+                onClick={() => setIsHistoryDrawerOpen(false)}
+                className="p-1 rounded-full text-stone-400 hover:text-white"
+              >
+                <IoCloseSharp className="w-5 h-5" />
+              </button>
+            </div>
+
+            <button
+              onClick={startNewChat}
+              className="btn btn-primary rounded-xl btn-sm w-full gap-2 mb-4 text-white"
+            >
+              <RiAddLine className="w-4 h-4" />
+              <span>New Chat</span>
+            </button>
+
+            <div className="flex-1 overflow-y-auto space-y-2">
+              {history.length === 0 ? (
+                <p className="text-xs text-stone-500 italic">No chat history yet.</p>
+              ) : (
+                history
+                  .slice(-15)
+                  .reverse()
+                  .map((chat, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => {
+                        setMessage(chat.userMessage);
+                        setIsHistoryDrawerOpen(false);
+                      }}
+                      className="p-2.5 text-xs text-stone-200 bg-stone-800/60 rounded-lg active:bg-stone-700 truncate"
+                    >
+                      {chat.userMessage}
+                    </div>
+                  ))
+              )}
+            </div>
+
+            <button
+              onClick={clearAllHistory}
+              className="btn btn-outline btn-error btn-xs rounded-lg mt-3 w-full gap-1.5"
+            >
+              <FaTrash className="w-3 h-3" />
+              <span>Clear History</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MAIN CHAT AREA */}
+      <main className="flex-1 flex flex-col h-full min-w-0 relative">
+        {/* Top Chat Header */}
+        <header className="px-4 py-2.5 border-b border-gray-800 bg-black/60 backdrop-blur-md flex items-center justify-between flex-shrink-0 z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-sky-500 to-blue-600 flex items-center justify-center text-white shadow-md">
+              <AiFillRobot className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <h1 className="font-bold text-sm text-white">Thook AI</h1>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              </div>
+              <p className="text-[11px] text-stone-400">Concise, friendly assistant</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Mobile History Button */}
+            <button
+              onClick={() => setIsHistoryDrawerOpen(true)}
+              className="md:hidden p-2 rounded-full text-stone-400 hover:text-white hover:bg-stone-800 transition"
+              title="Chat History"
+            >
+              <RiHistoryLine className="w-5 h-5" />
+            </button>
+
+            {/* New Chat Pill */}
+            <button
+              onClick={startNewChat}
+              className="btn btn-xs btn-outline rounded-full text-stone-300 hover:text-white gap-1"
+              title="Start fresh conversation"
+            >
+              <RiAddLine className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">New Chat</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Scrollable Messages Container */}
+        <div
+          ref={chatDivRef}
+          className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4 scroll-smooth"
+        >
+          {history.length === 0 ? (
+            /* Welcome / Empty State */
+            <div className="h-full flex flex-col items-center justify-center text-center px-4 max-w-md mx-auto my-auto py-8">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-sky-500 to-blue-600 flex items-center justify-center text-3xl shadow-xl shadow-sky-500/20 mb-4 animate-bounce">
+                ⚡
+              </div>
+              <h2 className="text-xl font-bold text-white mb-2">How can I help you today?</h2>
+              <p className="text-xs text-stone-400 mb-6">
+                Ask me questions, explore trending topics, or get quick help with anything.
+              </p>
+
+              {/* Quick suggestion pills */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full text-left">
+                {SUGGESTIONS.map((s, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => sendMessage(s)}
+                    className="p-3 text-xs bg-stone-900/90 hover:bg-stone-800 border border-gray-800 rounded-xl text-stone-300 hover:text-white transition active:scale-95"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : (
             history.map((chat, idx) => (
-              <div key={idx}>
-                {/* User Message */}
-                <div style={styles.messageUser}>
-                  <div style={styles.messageContentUser}>{chat.userMessage}</div>
+              <div key={idx} className="flex flex-col space-y-3">
+                {/* User Message (Right-aligned) */}
+                <div className="self-end max-w-[85%] sm:max-w-[75%] bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed shadow-md">
+                  {chat.userMessage}
                 </div>
-                {/* AI Response */}
-                <div style={styles.messageBot}>
-                  <div style={styles.messageContentBot}>{chat.aiReply}</div>
+
+                {/* AI Response (Left-aligned) */}
+                <div className="self-start max-w-[90%] sm:max-w-[80%] flex items-start gap-2.5">
+                  <div className="w-7 h-7 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center text-sky-400 flex-shrink-0 mt-0.5">
+                    <AiOutlineRobot className="w-4 h-4" />
+                  </div>
+                  <div className="bg-stone-900 border border-gray-800 text-stone-100 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words shadow-md">
+                    {chat.aiReply || (
+                      <span className="flex items-center gap-1.5 text-stone-400 py-1">
+                        <span className="loading loading-dots loading-xs text-sky-400"></span>
+                        <span className="text-xs">Thinking...</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             ))
           )}
-          {isSending && (
-            <div style={styles.messageBot}>
-              <div style={{ ...styles.messageContentBot, display: "flex", gap: "4px" }}>
-                <span style={styles.typingDot}></span>
-                <span style={{ ...styles.typingDot, animationDelay: "0.2s" }}></span>
-                <span style={{ ...styles.typingDot, animationDelay: "0.4s" }}></span>
+
+          {isSending && history[history.length - 1]?._temp === false && (
+            <div className="self-start flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center text-sky-400 flex-shrink-0">
+                <AiOutlineRobot className="w-4 h-4" />
+              </div>
+              <div className="bg-stone-900 border border-gray-800 rounded-2xl rounded-tl-sm px-4 py-2.5 shadow-md">
+                <span className="loading loading-dots loading-xs text-sky-400"></span>
               </div>
             </div>
           )}
         </div>
 
-        <div style={styles.inputArea}>
-          <div style={styles.inputContainer}>
+        {/* Input Area (Pinned Above Mobile Navigation) */}
+        <div className="p-2.5 sm:p-4 bg-black/80 backdrop-blur-md border-t border-gray-800 flex-shrink-0">
+          <div className="max-w-3xl mx-auto flex items-end gap-2 bg-stone-900/90 border border-gray-700 rounded-2xl px-3 py-1.5 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition shadow-inner">
             <textarea
               ref={messageInputRef}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Ask me anything... (I'll be concise)"
-              rows="1"
-              style={styles.messageInput}
+              onKeyDown={handleKeyPress}
+              placeholder="Ask Thook AI anything..."
+              rows={1}
+              className="w-full bg-transparent text-white text-sm placeholder-stone-500 resize-none focus:outline-none max-h-24 py-1.5"
             />
             <button
-              onClick={sendMessage}
-              disabled={isSending || message.trim() === ""}
-              style={{ ...styles.sendBtn, opacity: isSending || message.trim() === "" ? 0.6 : 1 }}
+              onClick={() => sendMessage()}
+              disabled={isSending || !message.trim()}
+              className="p-2 rounded-full bg-primary hover:bg-sky-400 text-white disabled:opacity-40 disabled:hover:bg-primary transition active:scale-95 flex-shrink-0"
+              title="Send message"
             >
-              Send
+              <IoSend className="w-4 h-4" />
             </button>
           </div>
         </div>
-      </div>
-
-      <style>{`
-        @keyframes slideIn {
-          from {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        @keyframes typing {
-          0%, 60%, 100% {
-            opacity: 0.3;
-            transform: translateY(0);
-          }
-          30% {
-            opacity: 1;
-            transform: translateY(-8px);
-          }
-        }
-      `}</style>
+      </main>
     </div>
   );
-};
-
-const styles = {
-  container: {
-    display: "flex",
-    height: "100vh",
-    background: "linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 100%)",
-    color: "#e0e0e0",
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-    overflow: "hidden",
-  },
-  sidebar: {
-    width: "260px",
-    background: "#111111",
-    borderRight: "1px solid #2a2a2a",
-    display: "flex",
-    flexDirection: "column",
-    padding: "20px",
-    overflowY: "auto",
-  },
-  logo: {
-    fontSize: "24px",
-    fontWeight: "800",
-    background: "linear-gradient(135deg, #00d9ff, #0099cc)",
-    WebkitBackgroundClip: "text",
-    WebkitTextFillColor: "transparent",
-    backgroundClip: "text",
-    marginBottom: "30px",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-  },
-  newChatBtn: {
-    width: "100%",
-    padding: "12px",
-    background: "linear-gradient(135deg, #00d9ff, #0099cc)",
-    border: "none",
-    borderRadius: "8px",
-    color: "#000",
-    fontWeight: "600",
-    cursor: "pointer",
-    marginBottom: "20px",
-    transition: "all 0.3s ease",
-  },
-  historyTitle: {
-    fontSize: "12px",
-    color: "#666",
-    textTransform: "uppercase",
-    letterSpacing: "1px",
-    marginBottom: "12px",
-    marginTop: "20px",
-  },
-  historyItem: {
-    padding: "10px",
-    marginBottom: "8px",
-    background: "rgba(255, 255, 255, 0.05)",
-    borderRadius: "6px",
-    cursor: "pointer",
-    fontSize: "14px",
-    maxHeight: "40px",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    transition: "all 0.2s ease",
-  },
-  clearHistoryBtn: {
-    marginTop: "auto",
-    padding: "10px",
-    background: "rgba(255, 59, 48, 0.2)",
-    border: "1px solid rgba(255, 59, 48, 0.4)",
-    color: "#ff3b30",
-    borderRadius: "6px",
-    cursor: "pointer",
-    fontSize: "12px",
-    transition: "all 0.2s ease",
-  },
-  mainContainer: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    background: "#0f0f0f",
-  },
-  header: {
-    padding: "20px",
-    borderBottom: "1px solid #2a2a2a",
-    background: "linear-gradient(135deg, rgba(0, 217, 255, 0.05), rgba(0, 153, 204, 0.05))",
-    backdropFilter: "blur(10px)",
-  },
-  headerH1: {
-    fontSize: "28px",
-    fontWeight: "700",
-    background: "linear-gradient(135deg, #00d9ff, #0099cc)",
-    WebkitBackgroundClip: "text",
-    WebkitTextFillColor: "transparent",
-    backgroundClip: "text",
-    margin: 0,
-  },
-  headerP: {
-    fontSize: "13px",
-    color: "#999",
-    marginTop: "5px",
-    margin: "5px 0 0 0",
-  },
-  chatDiv: {
-    flex: 1,
-    overflowY: "auto",
-    padding: "20px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "16px",
-    scrollBehavior: "smooth",
-  },
-  welcome: {
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    alignItems: "center",
-    textAlign: "center",
-    gap: "20px",
-    height: "100%",
-  },
-  welcomeH2: {
-    fontSize: "32px",
-    background: "linear-gradient(135deg, #00d9ff, #0099cc)",
-    WebkitBackgroundClip: "text",
-    WebkitTextFillColor: "transparent",
-    backgroundClip: "text",
-    margin: 0,
-  },
-  welcomeP: {
-    color: "#999",
-    fontSize: "14px",
-    maxWidth: "400px",
-    margin: 0,
-  },
-  messageUser: {
-    display: "flex",
-    justifyContent: "flex-end",
-    animation: "slideIn 0.3s ease",
-  },
-  messageContentUser: {
-    maxWidth: "70%",
-    padding: "12px 16px",
-    borderRadius: "18px 18px 4px 18px",
-    lineHeight: "1.5",
-    wordWrap: "break-word",
-    background: "linear-gradient(135deg, #00d9ff, #0099cc)",
-    color: "#000",
-    fontWeight: "500",
-  },
-  messageBot: {
-    display: "flex",
-    justifyContent: "flex-start",
-    animation: "slideIn 0.3s ease",
-  },
-  messageContentBot: {
-    maxWidth: "70%",
-    padding: "12px 16px",
-    borderRadius: "18px 18px 18px 4px",
-    lineHeight: "1.5",
-    wordWrap: "break-word",
-    background: "rgba(255, 255, 255, 0.08)",
-    color: "#e0e0e0",
-    border: "1px solid rgba(0, 217, 255, 0.2)",
-  },
-  typingDot: {
-    width: "6px",
-    height: "6px",
-    background: "#00d9ff",
-    borderRadius: "50%",
-    animation: "typing 1.4s infinite",
-    display: "inline-block",
-  },
-  inputArea: {
-    padding: "20px",
-    borderTop: "1px solid #2a2a2a",
-    background: "linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(0, 217, 255, 0.02))",
-    backdropFilter: "blur(10px)",
-  },
-  inputContainer: {
-    display: "flex",
-    gap: "12px",
-    alignItems: "flex-end",
-  },
-  messageInput: {
-    flex: 1,
-    padding: "12px 16px",
-    background: "rgba(255, 255, 255, 0.08)",
-    border: "1px solid rgba(0, 217, 255, 0.3)",
-    borderRadius: "12px",
-    color: "#e0e0e0",
-    fontSize: "14px",
-    fontFamily: "inherit",
-    resize: "none",
-    maxHeight: "100px",
-    transition: "all 0.3s ease",
-    outline: "none",
-  },
-  sendBtn: {
-    padding: "12px 20px",
-    background: "linear-gradient(135deg, #00d9ff, #0099cc)",
-    border: "none",
-    borderRadius: "8px",
-    color: "#000",
-    fontWeight: "600",
-    cursor: "pointer",
-    transition: "all 0.3s ease",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "6px",
-    whiteSpace: "nowrap",
-  },
 };
 
 export default ChatPage;

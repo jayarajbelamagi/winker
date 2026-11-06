@@ -106,7 +106,7 @@ const SignUpPage = () => {
 			</div>
 			<div className='flex-1 flex flex-col justify-center items-center w-full'>
 				<div className='w-full max-w-sm flex flex-col'>
-					<XSvg className='w-16 lg:hidden fill-white self-center mb-2' />
+					<XSvg className='w-20 lg:hidden fill-white self-center mb-3' />
 					<h1 className='text-3xl font-extrabold text-white mb-4'>Join today.</h1>
 
 					{/* SOCIAL SIGNUP BUTTONS */}

@@ -17,6 +17,18 @@ const CATEGORIES = [
 	{ id: "business", label: "Business & Tech", icon: "📈" },
 ];
 
+const formatNewsTime = (pubDate) => {
+	if (!pubDate) return "Just now";
+	const diff = Date.now() - new Date(pubDate).getTime();
+	if (isNaN(diff) || diff < 0) return "Just now";
+	const mins = Math.floor(diff / (1000 * 60));
+	if (mins < 60) return `${mins <= 1 ? "Just now" : `${mins}m ago`}`;
+	const hours = Math.floor(mins / 60);
+	if (hours < 24) return `${hours}h ago`;
+	const days = Math.floor(hours / 24);
+	return `${days}d ago`;
+};
+
 const NewsPage = () => {
 	const [activeCategory, setActiveCategory] = useState("all");
 	const [searchQuery, setSearchQuery] = useState("");
@@ -30,7 +42,8 @@ const NewsPage = () => {
 			if (!res.ok) throw new Error(json.error || "Failed to load news");
 			return json;
 		},
-		staleTime: 60 * 1000,
+		staleTime: 30 * 1000,
+		refetchInterval: 60 * 1000, // Auto-update live news every 1 min
 	});
 
 	const articles = data?.articles || [];
@@ -59,6 +72,10 @@ const NewsPage = () => {
 						<h1 className="text-2xl font-black text-white flex items-center gap-2">
 							<span className="text-2xl">🇮🇳</span>
 							<span>India Trending News</span>
+							<span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+								<span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+								LIVE
+							</span>
 						</h1>
 						<p className="text-xs text-stone-400 mt-0.5 flex items-center gap-1">
 							<HiOutlineSparkles className="text-primary text-sm" />
@@ -145,11 +162,8 @@ const NewsPage = () => {
 										<div className="flex items-center gap-2">
 											<span className="font-semibold text-primary">{article.source}</span>
 											<span>•</span>
-											<span>
-												{new Date(article.pubDate).toLocaleTimeString([], {
-													hour: "2-digit",
-													minute: "2-digit",
-												})}
+											<span className="text-stone-300 font-mono">
+												{formatNewsTime(article.pubDate)}
 											</span>
 										</div>
 										<span className="badge badge-sm badge-neutral text-[10px] uppercase font-bold text-stone-300">
