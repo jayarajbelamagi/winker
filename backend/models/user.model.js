@@ -8,11 +8,15 @@ const userSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User", default: [] }],
     following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User", default: [] }],
-    profileImg: { type: String, default: "/avatar-placeholder.png" }, // default avatar
+    profileImg: { type: String, default: "/avatar-placeholder.png" },
     coverImg: { type: String, default: "" },
     bio: { type: String, default: "" },
     link: { type: String, default: "" },
     likedPosts: [{ type: mongoose.Schema.Types.ObjectId, ref: "Post", default: [] }],
+    bookmarks: [{ type: mongoose.Schema.Types.ObjectId, ref: "Post", default: [] }],
+    authProvider: { type: String, default: "local" },
+    resetPasswordToken: { type: String, default: null },
+    resetPasswordExpires: { type: Date, default: null },
   },
   { timestamps: true }
 );

@@ -7,6 +7,9 @@ import SignUpPage from "./pages/auth/signup/SignUpPage";
 import NotificationPage from "./pages/notification/NotificationPage";
 import ProfilePage from "./pages/profile/ProfilePage";
 import ChatPage from "./pages/chat/ChatPage";
+import NewsPage from "./pages/news/NewsPage";
+import BookmarksPage from "./pages/bookmarks/BookmarksPage";
+import ResetPasswordPage from "./pages/auth/reset/ResetPasswordPage";
 
 import Sidebar from "./components/common/Sidebar";
 import RightPanel from "./components/common/RightPanel";
@@ -91,6 +94,18 @@ function App() {
         <Route
           path="/signup"
           element={!authUser ? <SignUpPage /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/reset-password/:token"
+          element={<ResetPasswordPage />}
+        />
+        <Route
+          path="/news"
+          element={authUser ? <NewsPage /> : <Navigate to="/login" />}
+        />
+        <Route
+          path="/bookmarks"
+          element={authUser ? <BookmarksPage /> : <Navigate to="/login" />}
         />
         <Route
           path="/notifications"

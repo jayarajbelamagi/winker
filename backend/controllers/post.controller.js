@@ -15,8 +15,25 @@ export const createPost = async (req, res) => {
 
 		let img = null;
 		if (imgBase64) {
-			const uploadedResponse = await cloudinary.uploader.upload(imgBase64);
-			img = uploadedResponse.secure_url;
+			try {
+				if (imgBase64.startsWith("data:image/") || imgBase64.startsWith("http")) {
+					const uploadedResponse = await cloudinary.uploader.upload(imgBase64, {
+						folder: "winker_posts",
+						resource_type: "auto",
+					});
+					img = uploadedResponse.secure_url;
+				} else {
+					img = imgBase64;
+				}
+			} catch (cloudErr) {
+				console.error("Cloudinary upload failed in createPost:", cloudErr.message);
+				// If URL is already hosted, retain it
+				if (imgBase64.startsWith("http")) {
+					img = imgBase64;
+				} else {
+					return res.status(500).json({ error: "Failed to upload image. Please check image format." });
+				}
+			}
 		}
 
 		const newPost = new Post({ user: userId, text, img });
@@ -39,9 +56,13 @@ export const deletePost = async (req, res) => {
 			return res.status(401).json({ error: "Not authorized" });
 		}
 
-		if (post.img) {
-			const imgId = post.img.split("/").pop().split(".")[0];
-			await cloudinary.uploader.destroy(imgId);
+		if (post.img && post.img.includes("cloudinary.com")) {
+			try {
+				const imgId = post.img.split("/").pop().split(".")[0];
+				await cloudinary.uploader.destroy(imgId);
+			} catch (err) {
+				console.warn("Could not delete post image from Cloudinary:", err.message);
+			}
 		}
 
 		await Post.findByIdAndDelete(req.params.id);
@@ -167,6 +188,51 @@ export const getLikedPosts = async (req, res) => {
 		res.status(200).json(posts);
 	} catch (error) {
 		console.error("Error in getLikedPosts:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+// BOOKMARK / UNBOOKMARK POST
+export const bookmarkPost = async (req, res) => {
+	try {
+		const postId = req.params.id;
+		const userId = req.user._id;
+
+		const post = await Post.findById(postId);
+		if (!post) return res.status(404).json({ error: "Post not found" });
+
+		const user = await User.findById(userId);
+		if (!user) return res.status(404).json({ error: "User not found" });
+
+		const isBookmarked = user.bookmarks?.some((b) => b.toString() === postId.toString());
+
+		if (isBookmarked) {
+			await User.findByIdAndUpdate(userId, { $pull: { bookmarks: postId } });
+			return res.status(200).json({ bookmarked: false, message: "Removed from bookmarks" });
+		} else {
+			await User.findByIdAndUpdate(userId, { $addToSet: { bookmarks: postId } });
+			return res.status(200).json({ bookmarked: true, message: "Added to bookmarks" });
+		}
+	} catch (error) {
+		console.error("Error in bookmarkPost:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+// GET USER BOOKMARKED POSTS
+export const getBookmarkedPosts = async (req, res) => {
+	try {
+		const user = await User.findById(req.user._id);
+		if (!user) return res.status(404).json({ error: "User not found" });
+
+		const posts = await Post.find({ _id: { $in: user.bookmarks || [] } })
+			.sort({ createdAt: -1 })
+			.populate("user", "-password")
+			.populate("comments.user", "-password");
+
+		res.status(200).json(posts);
+	} catch (error) {
+		console.error("Error in getBookmarkedPosts:", error);
 		res.status(500).json({ error: "Internal server error" });
 	}
 };

@@ -3,6 +3,21 @@ import { v2 as cloudinary } from "cloudinary";
 import User from "../models/user.model.js";
 import Notification from "../models/notification.model.js";
 
+// Helper to safely extract public ID from Cloudinary URL
+const getCloudinaryPublicId = (url) => {
+	if (!url || !url.includes("res.cloudinary.com")) return null;
+	try {
+		const parts = url.split("/");
+		const filename = parts.pop();
+		const publicId = filename.split(".")[0];
+		// Check if inside a folder
+		const folder = parts[parts.length - 1];
+		return folder && folder !== "upload" ? `${folder}/${publicId}` : publicId;
+	} catch (e) {
+		return null;
+	}
+};
+
 // GET USER PROFILE
 export const getUserProfile = async (req, res) => {
 	try {
@@ -72,27 +87,52 @@ export const updateUser = async (req, res) => {
 		if (currentPassword && newPassword) {
 			const match = await bcrypt.compare(currentPassword, user.password);
 			if (!match) return res.status(400).json({ error: "Current password incorrect" });
+			if (newPassword.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
 			const salt = await bcrypt.genSalt(10);
 			user.password = await bcrypt.hash(newPassword, salt);
 		}
 
-		if (profileImg) {
-			if (user.profileImg) await cloudinary.uploader.destroy(user.profileImg.split("/").pop().split(".")[0]);
-			const uploaded = await cloudinary.uploader.upload(profileImg);
-			profileImg = uploaded.secure_url;
+		// Handle profileImg upload only if newly provided as base64 or changed
+		if (profileImg && profileImg.startsWith("data:image/")) {
+			try {
+				const oldId = getCloudinaryPublicId(user.profileImg);
+				if (oldId) await cloudinary.uploader.destroy(oldId);
+
+				const uploaded = await cloudinary.uploader.upload(profileImg, {
+					folder: "winker_profiles",
+					resource_type: "image",
+				});
+				profileImg = uploaded.secure_url;
+			} catch (cloudErr) {
+				console.error("Cloudinary profileImg upload error:", cloudErr.message);
+				// Keep existing image if upload fails
+				profileImg = user.profileImg;
+			}
 		}
 
-		if (coverImg) {
-			if (user.coverImg) await cloudinary.uploader.destroy(user.coverImg.split("/").pop().split(".")[0]);
-			const uploaded = await cloudinary.uploader.upload(coverImg);
-			coverImg = uploaded.secure_url;
+		// Handle coverImg upload only if newly provided as base64 or changed
+		if (coverImg && coverImg.startsWith("data:image/")) {
+			try {
+				const oldId = getCloudinaryPublicId(user.coverImg);
+				if (oldId) await cloudinary.uploader.destroy(oldId);
+
+				const uploaded = await cloudinary.uploader.upload(coverImg, {
+					folder: "winker_covers",
+					resource_type: "image",
+				});
+				coverImg = uploaded.secure_url;
+			} catch (cloudErr) {
+				console.error("Cloudinary coverImg upload error:", cloudErr.message);
+				// Keep existing cover if upload fails
+				coverImg = user.coverImg;
+			}
 		}
 
 		user.fullName = fullName || user.fullName;
 		user.email = email || user.email;
 		user.username = username || user.username;
-		user.bio = bio || user.bio;
-		user.link = link || user.link;
+		user.bio = typeof bio !== "undefined" ? bio : user.bio;
+		user.link = typeof link !== "undefined" ? link : user.link;
 		user.profileImg = profileImg || user.profileImg;
 		user.coverImg = coverImg || user.coverImg;
 
@@ -101,10 +141,9 @@ export const updateUser = async (req, res) => {
 		res.status(200).json(user);
 	} catch (error) {
 		console.error("Error in updateUser:", error);
-		res.status(500).json({ error: error.message });
+		res.status(500).json({ error: error.message || "Failed to update profile" });
 	}
 };
-
 
 // GET FOLLOWERS LIST
 export const getFollowers = async (req, res) => {

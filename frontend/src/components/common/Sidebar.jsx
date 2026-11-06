@@ -4,6 +4,8 @@ import { MdHomeFilled } from "react-icons/md";
 import { IoNotifications } from "react-icons/io5";
 import { FaUser } from "react-icons/fa";
 import { AiOutlineRobot } from "react-icons/ai";
+import { IoNewspaperOutline } from "react-icons/io5";
+import { BsBookmark } from "react-icons/bs";
 import { Link } from "react-router-dom";
 import { BiLogOut } from "react-icons/bi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -34,7 +36,6 @@ const Sidebar = () => {
 			queryClient.invalidateQueries({ queryKey: ["authUser"] });
 		},
 		onError: () => {
-			// Ensure user is logged out locally even if backend call fails
 			clearStoredAuth();
 			queryClient.setQueryData(["authUser"], null);
 			queryClient.invalidateQueries({ queryKey: ["authUser"] });
@@ -49,41 +50,69 @@ const Sidebar = () => {
 				<Link to='/' className='flex justify-center md:justify-start'>
 					<XSvg className='px-2 w-12 h-12 rounded-full fill-white hover:bg-stone-900' />
 				</Link>
-				<ul className='flex flex-col gap-3 mt-4'>
+				<ul className='flex flex-col gap-2 mt-4'>
+					{/* 1. Home */}
 					<li className='flex justify-center md:justify-start'>
 						<Link
 							to='/'
 							className='flex gap-3 items-center hover:bg-stone-900 transition-all rounded-full duration-300 py-2 pl-2 pr-4 max-w-fit cursor-pointer'
 						>
-							<MdHomeFilled className='w-8 h-8' />
+							<MdHomeFilled className='w-7 h-7' />
 							<span className='text-lg hidden md:block'>Home</span>
 						</Link>
 					</li>
+
+					{/* 2. News (India Trending) */}
+					<li className='flex justify-center md:justify-start'>
+						<Link
+							to='/news'
+							className='flex gap-3 items-center hover:bg-stone-900 transition-all rounded-full duration-300 py-2 pl-2 pr-4 max-w-fit cursor-pointer group'
+						>
+							<IoNewspaperOutline className='w-7 h-7 text-primary group-hover:scale-110 transition' />
+							<span className='text-lg hidden md:block font-medium'>News</span>
+						</Link>
+					</li>
+
+					{/* 3. Notifications */}
 					<li className='flex justify-center md:justify-start'>
 						<Link
 							to='/notifications'
 							className='flex gap-3 items-center hover:bg-stone-900 transition-all rounded-full duration-300 py-2 pl-2 pr-4 max-w-fit cursor-pointer'
 						>
-							<IoNotifications className='w-6 h-6' />
+							<IoNotifications className='w-7 h-7' />
 							<span className='text-lg hidden md:block'>Notifications</span>
 						</Link>
 					</li>
+
+					{/* 4. Bookmarks */}
+					<li className='flex justify-center md:justify-start'>
+						<Link
+							to='/bookmarks'
+							className='flex gap-3 items-center hover:bg-stone-900 transition-all rounded-full duration-300 py-2 pl-2 pr-4 max-w-fit cursor-pointer'
+						>
+							<BsBookmark className='w-6 h-6 ml-0.5' />
+							<span className='text-lg hidden md:block'>Bookmarks</span>
+						</Link>
+					</li>
+
+					{/* 5. Thook AI */}
 					<li className='flex justify-center md:justify-start'>
 						<Link
 							to='/chat'
 							className='flex gap-3 items-center hover:bg-stone-900 transition-all rounded-full duration-300 py-2 pl-2 pr-4 max-w-fit cursor-pointer'
 						>
-							<AiOutlineRobot className='w-6 h-6' />
+							<AiOutlineRobot className='w-7 h-7' />
 							<span className='text-lg hidden md:block'>Thook</span>
 						</Link>
 					</li>
 
+					{/* 6. Profile */}
 					<li className='flex justify-center md:justify-start'>
 						<Link
 							to={`/profile/${authUser?.username}`}
 							className='flex gap-3 items-center hover:bg-stone-900 transition-all rounded-full duration-300 py-2 pl-2 pr-4 max-w-fit cursor-pointer'
 						>
-							<FaUser className='w-6 h-6' />
+							<FaUser className='w-6 h-6 ml-0.5' />
 							<span className='text-lg hidden md:block'>Profile</span>
 						</Link>
 					</li>
@@ -94,8 +123,15 @@ const Sidebar = () => {
 						className='mt-auto mb-10 flex gap-2 items-start transition-all duration-300 hover:bg-[#181818] py-2 px-4 rounded-full'
 					>
 						<div className='avatar hidden md:inline-flex'>
-							<div className='w-8 rounded-full'>
-								<img src={authUser?.profileImg || "/avatar-placeholder.png"} />
+							<div className='w-8 rounded-full overflow-hidden'>
+								<img
+									src={authUser?.profileImg || "/avatar-placeholder.png"}
+									alt='Avatar'
+									onError={(e) => {
+										e.target.onerror = null;
+										e.target.src = "/avatar-placeholder.png";
+									}}
+								/>
 							</div>
 						</div>
 						<div className='flex justify-between flex-1'>
@@ -104,11 +140,12 @@ const Sidebar = () => {
 								<p className='text-slate-500 text-sm'>@{authUser?.username}</p>
 							</div>
 							<BiLogOut
-								className='w-5 h-5 cursor-pointer'
+								className='w-5 h-5 cursor-pointer text-stone-400 hover:text-white'
 								onClick={(e) => {
 									e.preventDefault();
 									logout();
 								}}
+								title='Log out'
 							/>
 						</div>
 					</Link>
