@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import mongoose from "mongoose";
 import { v2 as cloudinary } from "cloudinary";
 import User from "../models/user.model.js";
 import Notification from "../models/notification.model.js";
@@ -18,10 +19,19 @@ const getCloudinaryPublicId = (url) => {
 	}
 };
 
-// GET USER PROFILE
+// GET USER PROFILE (By username OR _id)
 export const getUserProfile = async (req, res) => {
 	try {
-		const user = await User.findOne({ username: req.params.username }).select("-password");
+		const identifier = req.params.username;
+		let user = null;
+
+		if (mongoose.isValidObjectId(identifier)) {
+			user = await User.findById(identifier).select("-password");
+		}
+		if (!user) {
+			user = await User.findOne({ username: identifier }).select("-password");
+		}
+
 		if (!user) return res.status(404).json({ message: "User not found" });
 		res.status(200).json(user);
 	} catch (error) {

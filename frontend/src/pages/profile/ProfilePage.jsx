@@ -11,7 +11,8 @@ import { FaArrowLeft } from "react-icons/fa6";
 import { IoCalendarOutline } from "react-icons/io5";
 import { FaLink } from "react-icons/fa";
 import { MdEdit } from "react-icons/md";
-import { FiSend } from "react-icons/fi";
+import { FiSend, FiPhone, FiVideo } from "react-icons/fi";
+import { useCall } from "../../context/CallContext";
 
 import { formatMemberSinceDate } from "../../utils/date";
 import useFollow from "../../hooks/useFollow";
@@ -50,9 +51,15 @@ const ProfilePage = () => {
     },
   });
 
-  const isMyProfile = authUser?._id === user?._id;
-  const amIFollowing = authUser?.following?.includes(user?._id);
+  const isMyProfile = authUser?._id?.toString() === user?._id?.toString();
+  const amIFollowing =
+    authUser?.following?.some((id) => (id?._id || id)?.toString() === user?._id?.toString()) ||
+    user?.followers?.some((id) => (id?._id || id)?.toString() === authUser?._id?.toString());
+  const doesUserFollowMe =
+    user?.following?.some((id) => (id?._id || id)?.toString() === authUser?._id?.toString()) ||
+    authUser?.followers?.some((id) => (id?._id || id)?.toString() === user?._id?.toString());
   const memberSinceDate = formatMemberSinceDate(user?.createdAt);
+  const { startCall } = useCall();
 
   useEffect(() => {
     refetch();
@@ -97,7 +104,6 @@ const ProfilePage = () => {
   };
 
   const handleMessageClick = () => {
-    const doesUserFollowMe = user?.following?.includes(authUser?._id);
     if (!amIFollowing || !doesUserFollowMe) {
       if (amIFollowing && !doesUserFollowMe) {
         toast.error(`You follow @${user.username}, but they haven't followed you back yet. You can text once @${user.username} follows you back!`);
@@ -107,6 +113,18 @@ const ProfilePage = () => {
       return;
     }
     navigate(`/messages/${user._id}`);
+  };
+
+  const handleCallClick = (callType) => {
+    if (!amIFollowing || !doesUserFollowMe) {
+      if (amIFollowing && !doesUserFollowMe) {
+        toast.error(`You follow @${user.username}, but they haven't followed you back yet. Calling requires mutual follow!`);
+      } else {
+        toast.error(`You and @${user.username} must both follow each other to start calling.`);
+      }
+      return;
+    }
+    startCall({ partner: user, callType });
   };
 
   return (
@@ -238,6 +256,20 @@ const ProfilePage = () => {
                   >
                     <FiSend className="w-3.5 h-3.5" />
                     <span>Message</span>
+                  </button>
+                  <button
+                    onClick={() => handleCallClick("audio")}
+                    className="btn btn-sm btn-circle btn-outline hover:bg-emerald-500 hover:border-emerald-500 hover:text-white transition"
+                    title="Audio Call"
+                  >
+                    <FiPhone className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleCallClick("video")}
+                    className="btn btn-sm btn-circle btn-outline hover:bg-sky-500 hover:border-sky-500 hover:text-white transition"
+                    title="Video Call"
+                  >
+                    <FiVideo className="w-3.5 h-3.5" />
                   </button>
                   <button
                     className="btn btn-outline rounded-full btn-sm"

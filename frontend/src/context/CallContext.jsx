@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createContext, useContext, useState, useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 import { apiFetch } from "../lib/api";
 import IncomingCallModal from "../components/chat/IncomingCallModal";
@@ -20,45 +20,12 @@ export const CallProvider = ({ children, authUser }) => {
   const [activeCall, setActiveCall] = useState(null);
   const [incomingCall, setIncomingCall] = useState(null);
 
-  const isCallActive = Boolean(activeCall || incomingCall);
+  const activeCallRef = useRef(null);
+  const incomingCallRef = useRef(null);
+  activeCallRef.current = activeCall;
+  incomingCallRef.current = incomingCall;
 
-  // 1. Primary TanStack Query Poller (Fast: 800ms when calling/ringing, 1400ms idle)
-  const { data: callData } = useQuery({
-    queryKey: ["activeCallSession"],
-    queryFn: async () => {
-      if (!authUser) return null;
-      try {
-        const res = await apiFetch("/api/messages/call/active");
-        if (!res.ok) return null;
-        const data = await res.json();
-        return data?.activeCall || null;
-      } catch (err) {
-        return null;
-      }
-    },
-    enabled: Boolean(authUser),
-    refetchInterval: isCallActive ? 800 : 1400,
-    refetchIntervalInBackground: true,
-  });
-
-  // 2. Secondary Native Poller (Ensures background tabs on desktop/mobile NEVER sleep)
-  useEffect(() => {
-    if (!authUser) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const res = await apiFetch("/api/messages/call/active");
-        if (res.ok) {
-          const data = await res.json();
-          queryClient.setQueryData(["activeCallSession"], data?.activeCall || null);
-        }
-      } catch (e) {}
-    }, isCallActive ? 900 : 1600);
-
-    return () => clearInterval(interval);
-  }, [authUser, isCallActive, queryClient]);
-
-  // 3. Robust State Synchronization
+  // Ultra-reliable 1-second interval poller with zero cache lag
   useEffect(() => {
     if (!authUser) {
       setActiveCall(null);
@@ -66,42 +33,68 @@ export const CallProvider = ({ children, authUser }) => {
       return;
     }
 
-    if (!callData) {
-      if (incomingCall) setIncomingCall(null);
-      if (activeCall && (activeCall.status === "ended" || activeCall.status === "declined" || activeCall.status === "missed")) {
-        setActiveCall(null);
+    const checkActiveCalls = async () => {
+      try {
+        const res = await apiFetch("/api/messages/call/active");
+        if (!res.ok) return;
+        const data = await res.json();
+        const serverCall = data?.activeCall || null;
+
+        const myId = (authUser._id || authUser.id)?.toString();
+
+        if (!serverCall) {
+          if (incomingCallRef.current) setIncomingCall(null);
+          if (
+            activeCallRef.current &&
+            (activeCallRef.current.status === "ended" ||
+              activeCallRef.current.status === "declined" ||
+              activeCallRef.current.status === "missed")
+          ) {
+            setActiveCall(null);
+          }
+          return;
+        }
+
+        const receiverId = (serverCall.receiver?._id || serverCall.receiverId)?.toString();
+        const callerId = (serverCall.caller?._id || serverCall.callerId)?.toString();
+
+        const isReceiver = Boolean(myId && receiverId && myId === receiverId);
+        const isCaller = Boolean(myId && callerId && myId === callerId);
+
+        if (isReceiver && serverCall.status === "ringing") {
+          // Incoming call ringing for this receiver
+          setIncomingCall(serverCall);
+          setActiveCall(null);
+        } else if (serverCall.status === "connected" && (isReceiver || isCaller)) {
+          // Connected call
+          setIncomingCall(null);
+          setActiveCall(serverCall);
+        } else if (isCaller && serverCall.status === "ringing") {
+          // Caller waiting for receiver
+          setActiveCall(serverCall);
+          setIncomingCall(null);
+        } else if (
+          serverCall.status === "declined" ||
+          serverCall.status === "ended" ||
+          serverCall.status === "missed"
+        ) {
+          setIncomingCall(null);
+          if (activeCallRef.current) {
+            setActiveCall((prev) => (prev ? { ...prev, status: serverCall.status } : null));
+          }
+        }
+      } catch (err) {
+        // network hiccup
       }
-      return;
-    }
+    };
 
-    const myId = (authUser._id || authUser.id)?.toString();
-    const receiverId = (callData.receiver?._id || callData.receiverId)?.toString();
-    const callerId = (callData.caller?._id || callData.callerId)?.toString();
+    checkActiveCalls();
+    const interval = setInterval(checkActiveCalls, 1000);
 
-    const isReceiver = Boolean(myId && receiverId && myId === receiverId);
-    const isCaller = Boolean(myId && callerId && myId === callerId);
+    return () => clearInterval(interval);
+  }, [authUser]);
 
-    if (isReceiver && callData.status === "ringing") {
-      // Incoming call ringing for this receiver
-      setIncomingCall(callData);
-      setActiveCall(null);
-    } else if (callData.status === "connected" && (isReceiver || isCaller)) {
-      // Call is connected
-      setIncomingCall(null);
-      setActiveCall(callData);
-    } else if (isCaller && callData.status === "ringing") {
-      // Caller waiting for receiver to answer
-      setActiveCall(callData);
-      setIncomingCall(null);
-    } else if (callData.status === "declined" || callData.status === "ended" || callData.status === "missed") {
-      setIncomingCall(null);
-      if (activeCall) {
-        setActiveCall((prev) => (prev ? { ...prev, status: callData.status } : null));
-      }
-    }
-  }, [callData, authUser]);
-
-  // 4. Tab Title Notification for Incoming Calls
+  // Tab Title Notification for Incoming Calls
   useEffect(() => {
     if (incomingCall) {
       const origTitle = document.title;
@@ -122,9 +115,14 @@ export const CallProvider = ({ children, authUser }) => {
 
   // Caller initiates call
   const startCall = async ({ partner, callType = "audio" }) => {
-    if (!partner?._id) return;
+    const partnerId = (partner?._id || partner?.id)?.toString();
+    if (!partnerId) {
+      toast.error("Please select a recipient first");
+      return;
+    }
+
     try {
-      const res = await apiFetch(`/api/messages/call/initiate/${partner._id}`, {
+      const res = await apiFetch(`/api/messages/call/initiate/${partnerId}`, {
         method: "POST",
         body: JSON.stringify({ callType }),
       });
@@ -134,7 +132,6 @@ export const CallProvider = ({ children, authUser }) => {
       }
 
       setActiveCall(data.call);
-      queryClient.setQueryData(["activeCallSession"], data.call);
     } catch (err) {
       toast.error(err.message || "Could not start call");
     }
@@ -153,7 +150,6 @@ export const CallProvider = ({ children, authUser }) => {
 
       setIncomingCall(null);
       setActiveCall(data.call);
-      queryClient.setQueryData(["activeCallSession"], data.call);
     } catch (err) {
       toast.error(err.message || "Failed to answer call");
       setIncomingCall(null);
@@ -167,7 +163,6 @@ export const CallProvider = ({ children, authUser }) => {
       await apiFetch(`/api/messages/call/decline/${callId}`, {
         method: "POST",
       });
-      queryClient.invalidateQueries({ queryKey: ["activeCallSession"] });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
     } catch (err) {}
   };
@@ -182,7 +177,6 @@ export const CallProvider = ({ children, authUser }) => {
         });
       } catch (err) {}
     }
-    queryClient.invalidateQueries({ queryKey: ["activeCallSession"] });
     queryClient.invalidateQueries({ queryKey: ["conversations"] });
     queryClient.invalidateQueries({ queryKey: ["messages"] });
   };

@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Conversation from "../models/conversation.model.js";
 import Message from "../models/message.model.js";
 import User from "../models/user.model.js";
@@ -64,19 +65,26 @@ const logCallInternal = async (senderId, receiverId, { callType, duration = 0, s
 	}
 };
 
-// Helper: Check if two users are mutual followers
+// Helper: Check if two users are mutual followers (Supports ObjectIds OR usernames)
 export const checkMutualFollow = async (userId1, userId2) => {
-	const user1 = await User.findById(userId1);
-	const user2 = await User.findById(userId2);
+	const user1 = mongoose.isValidObjectId(userId1)
+		? await User.findById(userId1)
+		: await User.findOne({ username: userId1 });
+	const user2 = mongoose.isValidObjectId(userId2)
+		? await User.findById(userId2)
+		: await User.findOne({ username: userId2 });
 
 	if (!user1 || !user2) return { isMutual: false, user1, user2 };
 
+	const u1Id = user1._id.toString();
+	const u2Id = user2._id.toString();
+
 	const u1FollowsU2 =
-		user1.following?.some((id) => id.toString() === userId2.toString()) ||
-		user2.followers?.some((id) => id.toString() === userId1.toString());
+		user1.following?.some((id) => (id?._id || id)?.toString() === u2Id) ||
+		user2.followers?.some((id) => (id?._id || id)?.toString() === u1Id);
 	const u2FollowsU1 =
-		user2.following?.some((id) => id.toString() === userId1.toString()) ||
-		user1.followers?.some((id) => id.toString() === userId2.toString());
+		user2.following?.some((id) => (id?._id || id)?.toString() === u1Id) ||
+		user1.followers?.some((id) => (id?._id || id)?.toString() === u2Id);
 
 	return {
 		isMutual: Boolean(u1FollowsU2 && u2FollowsU1),

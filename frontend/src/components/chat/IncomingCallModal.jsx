@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { IoCall, IoVideocam } from "react-icons/io5";
 import { MdCallEnd } from "react-icons/md";
 
-// Web Audio API Ringtone Synthesizer for Incoming Calls
+// Fail-safe Web Audio API Ringtone Synthesizer for Incoming Calls
 const playIncomingRingtone = (audioCtxRef) => {
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -14,50 +14,54 @@ const playIncomingRingtone = (audioCtxRef) => {
     let timeoutId = null;
 
     const playChime = () => {
-      if (!isPlaying || ctx.state === "closed") return;
+      try {
+        if (!isPlaying || ctx.state === "closed") return;
 
-      const now = ctx.currentTime;
-      // Note 1: 523.25 Hz (C5)
-      const osc1 = ctx.createOscillator();
-      const gain1 = ctx.createGain();
-      osc1.type = "sine";
-      osc1.frequency.setValueAtTime(523.25, now);
-      gain1.gain.setValueAtTime(0, now);
-      gain1.gain.linearRampToValueAtTime(0.2, now + 0.05);
-      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-      osc1.connect(gain1);
-      gain1.connect(ctx.destination);
-      osc1.start(now);
-      osc1.stop(now + 0.4);
+        const now = ctx.currentTime;
+        // Note 1: 523.25 Hz (C5)
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = "sine";
+        osc1.frequency.setValueAtTime(523.25, now);
+        gain1.gain.setValueAtTime(0.001, now);
+        gain1.gain.linearRampToValueAtTime(0.2, now + 0.05);
+        gain1.gain.linearRampToValueAtTime(0.001, now + 0.35);
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.4);
 
-      // Note 2: 659.25 Hz (E5)
-      const osc2 = ctx.createOscillator();
-      const gain2 = ctx.createGain();
-      osc2.type = "sine";
-      osc2.frequency.setValueAtTime(659.25, now + 0.18);
-      gain2.gain.setValueAtTime(0, now + 0.18);
-      gain2.gain.linearRampToValueAtTime(0.25, now + 0.23);
-      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
-      osc2.connect(gain2);
-      gain2.connect(ctx.destination);
-      osc2.start(now + 0.18);
-      osc2.stop(now + 0.7);
+        // Note 2: 659.25 Hz (E5)
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = "sine";
+        osc2.frequency.setValueAtTime(659.25, now + 0.18);
+        gain2.gain.setValueAtTime(0.001, now + 0.18);
+        gain2.gain.linearRampToValueAtTime(0.22, now + 0.23);
+        gain2.gain.linearRampToValueAtTime(0.001, now + 0.65);
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.start(now + 0.18);
+        osc2.stop(now + 0.7);
 
-      // Note 3: 783.99 Hz (G5)
-      const osc3 = ctx.createOscillator();
-      const gain3 = ctx.createGain();
-      osc3.type = "sine";
-      osc3.frequency.setValueAtTime(783.99, now + 0.4);
-      gain3.gain.setValueAtTime(0, now + 0.4);
-      gain3.gain.linearRampToValueAtTime(0.28, now + 0.45);
-      gain3.gain.exponentialRampToValueAtTime(0.001, now + 1.1);
-      osc3.connect(gain3);
-      gain3.connect(ctx.destination);
-      osc3.start(now + 0.4);
-      osc3.stop(now + 1.2);
+        // Note 3: 783.99 Hz (G5)
+        const osc3 = ctx.createOscillator();
+        const gain3 = ctx.createGain();
+        osc3.type = "sine";
+        osc3.frequency.setValueAtTime(783.99, now + 0.4);
+        gain3.gain.setValueAtTime(0.001, now + 0.4);
+        gain3.gain.linearRampToValueAtTime(0.25, now + 0.45);
+        gain3.gain.linearRampToValueAtTime(0.001, now + 1.1);
+        osc3.connect(gain3);
+        gain3.connect(ctx.destination);
+        osc3.start(now + 0.4);
+        osc3.stop(now + 1.2);
 
-      // Repeat chime sequence every 2.4s
-      timeoutId = setTimeout(playChime, 2400);
+        // Repeat sequence every 2.4s
+        timeoutId = setTimeout(playChime, 2400);
+      } catch (err) {
+        console.warn("Audio chime tick failed:", err);
+      }
     };
 
     playChime();
@@ -80,8 +84,10 @@ const IncomingCallModal = ({ incomingCall, onAccept, onDecline }) => {
   useEffect(() => {
     if (!incomingCall) return;
 
-    // Start incoming ringtone
-    const stopAudio = playIncomingRingtone(audioCtxRef);
+    let stopAudio = () => {};
+    try {
+      stopAudio = playIncomingRingtone(audioCtxRef);
+    } catch (e) {}
 
     return () => {
       stopAudio();
@@ -95,13 +101,10 @@ const IncomingCallModal = ({ incomingCall, onAccept, onDecline }) => {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md animate-in fade-in duration-200 p-4">
-      <div className="relative w-full max-w-sm bg-stone-900/95 border border-stone-800 rounded-3xl shadow-2xl p-6 flex flex-col items-center text-center overflow-hidden">
-        {/* Subtle Ambient Pulse Background */}
-        <div className="absolute inset-0 -z-10 bg-radial from-emerald-500/10 via-transparent to-transparent animate-pulse" />
-
+      <div className="relative w-full max-w-sm bg-stone-900 border border-stone-800 rounded-3xl shadow-2xl p-6 flex flex-col items-center text-center overflow-hidden">
         {/* Incoming Badge */}
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase tracking-wider mb-6 animate-pulse">
-          {isVideo ? <IoVideocam className="w-3.5 h-3.5" /> : <IoCall className="w-3.5 h-3.5" />}
+        <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase tracking-wider mb-6 animate-pulse">
+          {isVideo ? <IoVideocam className="w-4 h-4" /> : <IoCall className="w-4 h-4" />}
           <span>Incoming {isVideo ? "Video" : "Audio"} Call...</span>
         </span>
 
