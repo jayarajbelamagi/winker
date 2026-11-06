@@ -22,6 +22,16 @@ const Post = ({ post }) => {
   const isMyPost = authUser?._id === post.user?._id;
   const formattedDate = post?.createdAt ? formatPostDate(post.createdAt) : "";
 
+  const getTimeRemaining = (expiresAt) => {
+    if (!expiresAt) return "24h left";
+    const diff = new Date(expiresAt).getTime() - Date.now();
+    if (diff <= 0) return "expired";
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    if (hours > 0) return `${hours}h left`;
+    return `${minutes}m left`;
+  };
+
   // Bookmark status
   const [isBookmarked, setIsBookmarked] = useState(
     () => authUser?.bookmarks?.some((id) => (typeof id === "string" ? id : id?._id) === post._id) || false
@@ -179,12 +189,24 @@ const Post = ({ post }) => {
           <Link to={`/profile/${postOwner?.username || ""}`} className="font-bold hover:underline">
             {postOwner?.fullName || "User"}
           </Link>
-          <span className="text-gray-500 flex gap-1 text-sm">
+          <span className="text-gray-500 flex items-center gap-1.5 text-sm flex-wrap">
             <Link to={`/profile/${postOwner?.username || ""}`}>
               @{postOwner?.username || "user"}
             </Link>
             <span>·</span>
             <span>{formattedDate}</span>
+            {post?.is24hStory && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                title="24-Hour Story Post: Disappears automatically after 24 hours"
+              >
+                <span>⏳</span>
+                <span>24h Story</span>
+                <span className="text-[10px] text-amber-400 font-mono">
+                  ({getTimeRemaining(post.expiresAt)})
+                </span>
+              </span>
+            )}
           </span>
           {isMyPost && (
             <span className="flex justify-end flex-1">

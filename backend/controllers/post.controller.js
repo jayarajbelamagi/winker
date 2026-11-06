@@ -3,10 +3,16 @@ import Post from "../models/post.model.js";
 import User from "../models/user.model.js";
 import { v2 as cloudinary } from "cloudinary";
 
-// CREATE POST
+// Active filter: shows permanent posts + 24h story posts that haven't expired yet
+const getActivePostFilter = (extraConditions = {}) => ({
+	...extraConditions,
+	$or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+});
+
+// CREATE POST (supports optional 24-hour expiration)
 export const createPost = async (req, res) => {
 	try {
-		const { text, img: imgBase64 } = req.body;
+		const { text, img: imgBase64, is24hStory } = req.body;
 		const userId = req.user._id.toString();
 
 		if (!text && !imgBase64) {
@@ -27,7 +33,6 @@ export const createPost = async (req, res) => {
 				}
 			} catch (cloudErr) {
 				console.error("Cloudinary upload failed in createPost:", cloudErr.message);
-				// If URL is already hosted, retain it
 				if (imgBase64.startsWith("http")) {
 					img = imgBase64;
 				} else {
@@ -36,10 +41,20 @@ export const createPost = async (req, res) => {
 			}
 		}
 
-		const newPost = new Post({ user: userId, text, img });
+		// Calculate 24-hour expiration if marked as a 24-hour story post
+		const expiresAt = is24hStory ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null;
+
+		const newPost = new Post({
+			user: userId,
+			text,
+			img,
+			is24hStory: Boolean(is24hStory),
+			expiresAt,
+		});
 		await newPost.save();
 
-		res.status(201).json(newPost);
+		const populatedPost = await Post.findById(newPost._id).populate("user", "-password");
+		res.status(201).json(populatedPost);
 	} catch (error) {
 		console.error("Error in createPost:", error);
 		res.status(500).json({ error: "Internal server error" });
@@ -127,7 +142,7 @@ export const likeUnlikePost = async (req, res) => {
 // GET ALL POSTS (For You)
 export const getAllPosts = async (req, res) => {
 	try {
-		const posts = await Post.find()
+		const posts = await Post.find(getActivePostFilter())
 			.sort({ createdAt: -1 })
 			.populate("user", "-password")
 			.populate("comments.user", "-password");
@@ -145,7 +160,7 @@ export const getFollowingPosts = async (req, res) => {
 		const user = await User.findById(req.user._id);
 		if (!user) return res.status(404).json({ error: "User not found" });
 
-		const posts = await Post.find({ user: { $in: user.following } })
+		const posts = await Post.find(getActivePostFilter({ user: { $in: user.following } }))
 			.sort({ createdAt: -1 })
 			.populate("user", "-password")
 			.populate("comments.user", "-password");
@@ -163,7 +178,7 @@ export const getUserPosts = async (req, res) => {
 		const user = await User.findOne({ username: req.params.username });
 		if (!user) return res.status(404).json({ error: "User not found" });
 
-		const posts = await Post.find({ user: user._id })
+		const posts = await Post.find(getActivePostFilter({ user: user._id }))
 			.sort({ createdAt: -1 })
 			.populate("user", "-password")
 			.populate("comments.user", "-password");
@@ -181,7 +196,7 @@ export const getLikedPosts = async (req, res) => {
 		const user = await User.findById(req.params.id);
 		if (!user) return res.status(404).json({ error: "User not found" });
 
-		const posts = await Post.find({ _id: { $in: user.likedPosts } })
+		const posts = await Post.find(getActivePostFilter({ _id: { $in: user.likedPosts } }))
 			.populate("user", "-password")
 			.populate("comments.user", "-password");
 
@@ -225,7 +240,7 @@ export const getBookmarkedPosts = async (req, res) => {
 		const user = await User.findById(req.user._id);
 		if (!user) return res.status(404).json({ error: "User not found" });
 
-		const posts = await Post.find({ _id: { $in: user.bookmarks || [] } })
+		const posts = await Post.find(getActivePostFilter({ _id: { $in: user.bookmarks || [] } }))
 			.sort({ createdAt: -1 })
 			.populate("user", "-password")
 			.populate("comments.user", "-password");

@@ -70,9 +70,9 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
-// Middlewares
-app.use(express.json({ limit: "5mb" }));
-app.use(express.urlencoded({ extended: true }));
+// Middlewares - Increased payload limit to 50mb to prevent "Entity Too Large" errors
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cookieParser());
 
 // Health & Ping routes (fast, lightweight, warm-up friendly)
@@ -100,6 +100,9 @@ app.use("/api/news", newsRoutes);
 // Global Error Handler
 app.use((err, req, res, next) => {
 	console.error("Unhandled error:", err.message);
+	if (err.type === "entity.too.large") {
+		return res.status(413).json({ error: "File payload too large. Please select a smaller file." });
+	}
 	res.status(500).json({ error: err.message || "Internal server error" });
 });
 

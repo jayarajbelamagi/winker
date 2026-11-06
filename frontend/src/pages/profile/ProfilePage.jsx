@@ -16,10 +16,12 @@ import { formatMemberSinceDate } from "../../utils/date";
 import useFollow from "../../hooks/useFollow";
 import useUpdateUserProfile from "../../hooks/useUpdateUserProfile";
 import { apiFetch } from "../../lib/api";
+import { compressImage } from "../../utils/imageCompressor";
 
 const ProfilePage = () => {
   const [coverImgPreview, setCoverImgPreview] = useState(null);
   const [profileImgPreview, setProfileImgPreview] = useState(null);
+  const [isCompressing, setIsCompressing] = useState(false);
   const [feedType, setFeedType] = useState("posts");
 
   const coverImgRef = useRef(null);
@@ -55,16 +57,27 @@ const ProfilePage = () => {
     refetch();
   }, [username, refetch]);
 
-  const handleImgChange = (e, type) => {
+  const handleImgChange = async (e, type) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (type === "coverImg") setCoverImgPreview(reader.result);
-      if (type === "profileImg") setProfileImgPreview(reader.result);
-    };
-    reader.readAsDataURL(file);
+    try {
+      setIsCompressing(true);
+      const maxDim = type === "profileImg" ? 800 : 1600;
+      const compressed = await compressImage(file, maxDim, 0.85);
+      if (type === "coverImg") setCoverImgPreview(compressed);
+      if (type === "profileImg") setProfileImgPreview(compressed);
+    } catch (err) {
+      console.warn("Client compression fallback:", err);
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (type === "coverImg") setCoverImgPreview(reader.result);
+        if (type === "profileImg") setProfileImgPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsCompressing(false);
+    }
   };
 
   const handleSavePhotos = async () => {

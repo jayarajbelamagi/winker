@@ -96,7 +96,13 @@ export const updateUser = async (req, res) => {
 		if (profileImg && profileImg.startsWith("data:image/")) {
 			try {
 				const oldId = getCloudinaryPublicId(user.profileImg);
-				if (oldId) await cloudinary.uploader.destroy(oldId);
+				if (oldId) {
+					try {
+						await cloudinary.uploader.destroy(oldId);
+					} catch (delErr) {
+						console.warn("Could not delete old profileImg from Cloudinary:", delErr.message);
+					}
+				}
 
 				const uploaded = await cloudinary.uploader.upload(profileImg, {
 					folder: "winker_profiles",
@@ -114,7 +120,13 @@ export const updateUser = async (req, res) => {
 		if (coverImg && coverImg.startsWith("data:image/")) {
 			try {
 				const oldId = getCloudinaryPublicId(user.coverImg);
-				if (oldId) await cloudinary.uploader.destroy(oldId);
+				if (oldId) {
+					try {
+						await cloudinary.uploader.destroy(oldId);
+					} catch (delErr) {
+						console.warn("Could not delete old coverImg from Cloudinary:", delErr.message);
+					}
+				}
 
 				const uploaded = await cloudinary.uploader.upload(coverImg, {
 					folder: "winker_covers",

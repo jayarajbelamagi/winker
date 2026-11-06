@@ -13,6 +13,14 @@ const postSchema = new mongoose.Schema(
 		img: {
 			type: String,
 		},
+		is24hStory: {
+			type: Boolean,
+			default: false,
+		},
+		expiresAt: {
+			type: Date,
+			default: null,
+		},
 		likes: [
 			{
 				type: mongoose.Schema.Types.ObjectId,
@@ -35,6 +43,9 @@ const postSchema = new mongoose.Schema(
 	},
 	{ timestamps: true }
 );
+
+// TTL Index: Automatically clean up expired 24h posts from database
+postSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 const Post = mongoose.model("Post", postSchema);
 

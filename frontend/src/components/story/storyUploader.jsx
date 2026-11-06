@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FaPlus } from "react-icons/fa";
 import { toast } from "react-hot-toast";
 import { apiFetch } from "../../lib/api";
+import { compressImage, dataURLtoFile } from "../../utils/imageCompressor";
 
 const StoryUploader = ({ authUser, onUploadSuccess }) => {
   const [media, setMedia] = useState(null);
@@ -37,10 +38,21 @@ const StoryUploader = ({ authUser, onUploadSuccess }) => {
     }
   };
 
-  const handleSelect = (file) => {
+  const handleSelect = async (file) => {
     if (!file) return;
-    setMedia(file);
-    handleUpload(file);
+
+    let fileToUpload = file;
+    if (file.type && file.type.startsWith("image/")) {
+      try {
+        const compressedBase64 = await compressImage(file, 1600, 0.85);
+        fileToUpload = dataURLtoFile(compressedBase64, file.name);
+      } catch (err) {
+        console.warn("Story image compression fallback:", err);
+      }
+    }
+
+    setMedia(fileToUpload);
+    handleUpload(fileToUpload);
   };
 
   return (

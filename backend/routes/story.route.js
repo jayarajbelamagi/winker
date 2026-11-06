@@ -11,10 +11,13 @@ import multer from "multer";
 
 const router = express.Router();
 
-// Configure multer for memory storage (we'll stream to Cloudinary)
-const upload = multer({ storage: multer.memoryStorage() });
+// Configure multer for memory storage up to 50MB (handles camera photos and short videos)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+});
 
-router.post("/", protectRoute, upload.single("media"), createStory);           // Only logged-in users
+router.post("/", protectRoute, upload.single("media"), createStory); // Only logged-in users
 router.get("/user/:userId", getUserStories);
 router.get("/feed/:userId", getFeedStories);
 router.post("/viewed", protectRoute, markStoryViewed); // Only logged-in users

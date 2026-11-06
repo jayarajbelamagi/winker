@@ -6,10 +6,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 import { apiFetch } from "../../lib/api";
 import EmojiPicker from "../../components/common/EmojiPicker";
+import { compressImage } from "../../utils/imageCompressor";
 
 const CreatePost = () => {
 	const [text, setText] = useState("");
 	const [img, setImg] = useState(null);
+	const [is24hStory, setIs24hStory] = useState(false);
+	const [isCompressing, setIsCompressing] = useState(false);
 	const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 	const imgRef = useRef(null);
 	const textareaRef = useRef(null);
@@ -23,11 +26,11 @@ const CreatePost = () => {
 		isError,
 		error,
 	} = useMutation({
-		mutationFn: async ({ text, img }) => {
+		mutationFn: async ({ text, img, is24hStory }) => {
 			try {
 				const res = await apiFetch("/api/posts/create", {
 					method: "POST",
-					body: JSON.stringify({ text, img }),
+					body: JSON.stringify({ text, img, is24hStory }),
 				});
 				const data = await res.json();
 				if (!res.ok) {
@@ -42,25 +45,39 @@ const CreatePost = () => {
 		onSuccess: () => {
 			setText("");
 			setImg(null);
+			setIs24hStory(false);
 			setShowEmojiPicker(false);
-			toast.success("Post created successfully");
+			toast.success(is24hStory ? "24h Story post published! It will expire in 24 hours." : "Post created successfully");
 			queryClient.invalidateQueries({ queryKey: ["posts"] });
 		},
 	});
 
 	const handleSubmit = (e) => {
 		e.preventDefault();
-		createPost({ text, img });
+		if (!text.trim() && !img) {
+			toast.error("Please provide text or an image");
+			return;
+		}
+		createPost({ text, img, is24hStory });
 	};
 
-	const handleImgChange = (e) => {
+	const handleImgChange = async (e) => {
 		const file = e.target.files[0];
 		if (file) {
-			const reader = new FileReader();
-			reader.onload = () => {
-				setImg(reader.result);
-			};
-			reader.readAsDataURL(file);
+			try {
+				setIsCompressing(true);
+				const compressed = await compressImage(file, 1600, 0.85);
+				setImg(compressed);
+			} catch (err) {
+				console.error("Image compression error:", err);
+				const reader = new FileReader();
+				reader.onload = () => {
+					setImg(reader.result);
+				};
+				reader.readAsDataURL(file);
+			} finally {
+				setIsCompressing(false);
+			}
 		}
 	};
 
@@ -98,24 +115,41 @@ const CreatePost = () => {
 				<textarea
 					ref={textareaRef}
 					className='textarea w-full p-0 text-lg resize-none border-none focus:outline-none border-gray-800'
-					placeholder='What is happening?!'
+					placeholder={is24hStory ? "Share a 24-hour story post..." : "What is happening?!"}
 					value={text}
 					onChange={(e) => setText(e.target.value)}
 				/>
+
+				{isCompressing && (
+					<div className='text-xs text-sky-400 flex items-center gap-1.5 py-1'>
+						<span className='loading loading-spinner loading-xs'></span>
+						<span>Optimizing image for fast upload...</span>
+					</div>
+				)}
+
 				{img && (
 					<div className='relative w-72 mx-auto'>
 						<IoCloseSharp
-							className='absolute top-0 right-0 text-white bg-gray-800 rounded-full w-5 h-5 cursor-pointer'
+							className='absolute top-0 right-0 text-white bg-gray-800 rounded-full w-5 h-5 cursor-pointer z-10'
 							onClick={() => {
 								setImg(null);
 								if (imgRef.current) imgRef.current.value = null;
 							}}
 						/>
-						<img src={img} className='w-full mx-auto h-72 object-contain rounded' alt='Post preview' />
+						<img src={img} className='w-full mx-auto h-72 object-contain rounded border border-gray-800' alt='Post preview' />
 					</div>
 				)}
 
-				<div className='flex justify-between border-t py-2 border-t-gray-700 relative'>
+				{is24hStory && (
+					<div className='flex items-center gap-2 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 px-3 py-2 rounded-lg transition-all animate-in fade-in'>
+						<span className='text-base'>⏳</span>
+						<span>
+							<strong>24-Hour Story Post:</strong> This post will automatically disappear from all feeds after 24 hours.
+						</span>
+					</div>
+				)}
+
+				<div className='flex justify-between border-t py-2 border-t-gray-700 relative items-center'>
 					<div className='flex gap-2 items-center relative'>
 						<button
 							type='button'
@@ -135,6 +169,21 @@ const CreatePost = () => {
 							<BsEmojiSmileFill className='fill-primary w-5 h-5 cursor-pointer' />
 						</button>
 
+						{/* 24-Hour Story Toggle Button */}
+						<button
+							type='button'
+							onClick={() => setIs24hStory((prev) => !prev)}
+							className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition border ${
+								is24hStory
+									? "bg-amber-500/20 text-amber-300 border-amber-400 shadow-sm"
+									: "bg-transparent text-gray-400 border-gray-700 hover:text-white hover:border-gray-500"
+							}`}
+							title='Make this a disappearing 24-hour post'
+						>
+							<span>⏳</span>
+							<span>{is24hStory ? "24h Story (ON)" : "24h Story"}</span>
+						</button>
+
 						{/* Emoji Picker Popover */}
 						{showEmojiPicker && (
 							<EmojiPicker
@@ -144,8 +193,11 @@ const CreatePost = () => {
 						)}
 					</div>
 					<input type='file' accept='image/*' hidden ref={imgRef} onChange={handleImgChange} />
-					<button className='btn btn-primary rounded-full btn-sm text-white px-4' disabled={isPending}>
-						{isPending ? "Posting..." : "Post"}
+					<button
+						className='btn btn-primary rounded-full btn-sm text-white px-5'
+						disabled={isPending || isCompressing}
+					>
+						{isPending ? "Posting..." : isCompressing ? "Processing..." : is24hStory ? "Post Story" : "Post"}
 					</button>
 				</div>
 				{isError && <div className='text-red-500 text-sm'>{error.message}</div>}

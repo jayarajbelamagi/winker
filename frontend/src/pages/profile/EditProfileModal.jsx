@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import useUpdateUserProfile from "../../hooks/useUpdateUserProfile";
 import { MdEdit, MdCameraAlt } from "react-icons/md";
+import { compressImage } from "../../utils/imageCompressor";
 
 const EditProfileModal = ({ authUser, profileImg, coverImg, setProfileImg, setCoverImg }) => {
   const [formData, setFormData] = useState({
@@ -39,21 +40,34 @@ const EditProfileModal = ({ authUser, profileImg, coverImg, setProfileImg, setCo
     }
   }, [authUser]);
 
-  const handleFileChange = (e, type) => {
+  const handleFileChange = async (e, type) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
+    try {
+      const maxDim = type === "profile" ? 800 : 1600;
+      const compressed = await compressImage(file, maxDim, 0.85);
       if (type === "profile") {
-        setModalProfilePreview(reader.result);
-        setProfileImg && setProfileImg(reader.result);
+        setModalProfilePreview(compressed);
+        setProfileImg && setProfileImg(compressed);
       } else {
-        setModalCoverPreview(reader.result);
-        setCoverImg && setCoverImg(reader.result);
+        setModalCoverPreview(compressed);
+        setCoverImg && setCoverImg(compressed);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.warn("Client compression fallback:", err);
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (type === "profile") {
+          setModalProfilePreview(reader.result);
+          setProfileImg && setProfileImg(reader.result);
+        } else {
+          setModalCoverPreview(reader.result);
+          setCoverImg && setCoverImg(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleSubmit = async (e) => {
