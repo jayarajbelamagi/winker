@@ -11,6 +11,7 @@ import { FaArrowLeft } from "react-icons/fa6";
 import { IoCalendarOutline } from "react-icons/io5";
 import { FaLink } from "react-icons/fa";
 import { MdEdit } from "react-icons/md";
+import { FiSend } from "react-icons/fi";
 
 import { formatMemberSinceDate } from "../../utils/date";
 import useFollow from "../../hooks/useFollow";
@@ -93,6 +94,19 @@ const ProfilePage = () => {
     } catch (err) {
       toast.error("Failed to update photos");
     }
+  };
+
+  const handleMessageClick = () => {
+    const doesUserFollowMe = user?.following?.includes(authUser?._id);
+    if (!amIFollowing || !doesUserFollowMe) {
+      if (amIFollowing && !doesUserFollowMe) {
+        toast.error(`You follow @${user.username}, but they haven't followed you back yet. You can text once @${user.username} follows you back!`);
+      } else {
+        toast.error(`You and @${user.username} must both follow each other to start texting.`);
+      }
+      return;
+    }
+    navigate(`/messages/${user._id}`);
   };
 
   return (
@@ -216,14 +230,24 @@ const ProfilePage = () => {
                 />
               )}
               {!isMyProfile && (
-                <button
-                  className="btn btn-outline rounded-full btn-sm"
-                  onClick={() => follow(user._id)}
-                >
-                  {isPending && "Loading..."}
-                  {!isPending && amIFollowing && "Unfollow"}
-                  {!isPending && !amIFollowing && "Follow"}
-                </button>
+                <>
+                  <button
+                    onClick={handleMessageClick}
+                    className="btn btn-sm btn-outline rounded-full gap-1.5 hover:bg-primary hover:border-primary hover:text-white transition"
+                    title="Send direct message"
+                  >
+                    <FiSend className="w-3.5 h-3.5" />
+                    <span>Message</span>
+                  </button>
+                  <button
+                    className="btn btn-outline rounded-full btn-sm"
+                    onClick={() => follow(user._id)}
+                  >
+                    {isPending && "Loading..."}
+                    {!isPending && amIFollowing && "Unfollow"}
+                    {!isPending && !amIFollowing && "Follow"}
+                  </button>
+                </>
               )}
             </div>
 

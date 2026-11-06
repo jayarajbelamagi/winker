@@ -22,6 +22,7 @@ import { apiFetch, getStoredToken, clearStoredAuth, wakeUpBackend } from "./lib/
 import FollowersPage from "./pages/FollowersFollowing/FollowersPage";
 import FollowingPage from "./pages/FollowersFollowing/FollowingPage";
 import PostPage from "./pages/post/PostPage";
+import MessagesPage from "./pages/messages/MessagesPage";
 
 import MobileTopBar from "./components/common/MobileTopBar";
 import MobileDrawer from "./components/common/MobileDrawer";
@@ -127,6 +128,14 @@ function App() {
           <Route
             path="/post/:id"
             element={authUser ? <PostPage authUser={authUser} /> : <Navigate to="/login" />}
+          />
+          <Route
+            path="/messages"
+            element={authUser ? <MessagesPage authUser={authUser} /> : <Navigate to="/login" />}
+          />
+          <Route
+            path="/messages/:userId"
+            element={authUser ? <MessagesPage authUser={authUser} /> : <Navigate to="/login" />}
           />
           <Route
             path="/news"

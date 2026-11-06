@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "../../lib/api";
 import { HiOutlineExternalLink, HiOutlineSparkles } from "react-icons/hi";
@@ -32,6 +32,12 @@ const formatNewsTime = (pubDate) => {
 const NewsPage = () => {
 	const [activeCategory, setActiveCategory] = useState("all");
 	const [searchQuery, setSearchQuery] = useState("");
+	const [showScrollTopPill, setShowScrollTopPill] = useState(false);
+	const [pullDistance, setPullDistance] = useState(0);
+	const [isPulling, setIsPulling] = useState(false);
+
+	const touchStartY = useRef(0);
+	const lastScrollY = useRef(0);
 	const navigate = useNavigate();
 
 	const { data, isLoading, isError, refetch, isRefetching } = useQuery({
@@ -46,6 +52,62 @@ const NewsPage = () => {
 		refetchInterval: 60 * 1000, // Auto-update live news every 1 min
 	});
 
+	// Detect scrolling up to refresh news like feed
+	useEffect(() => {
+		let highestScroll = 0;
+
+		const handleScroll = () => {
+			const currentY = window.scrollY;
+
+			// If scrolled down > 350px, show floating "↑ New stories" pill
+			if (currentY > 350) {
+				setShowScrollTopPill(true);
+				if (currentY > highestScroll) highestScroll = currentY;
+			} else if (currentY < 120) {
+				setShowScrollTopPill(false);
+			}
+
+			// When user was down and scrolls back up near the top (<= 40px)
+			if (highestScroll > 250 && currentY <= 40) {
+				highestScroll = 0;
+				refetch();
+			}
+
+			lastScrollY.current = currentY;
+		};
+
+		window.addEventListener("scroll", handleScroll, { passive: true });
+		return () => window.removeEventListener("scroll", handleScroll);
+	}, [refetch]);
+
+	// Touch pull-to-refresh on mobile
+	const handleTouchStart = (e) => {
+		if (window.scrollY === 0) {
+			touchStartY.current = e.touches[0].clientY;
+		} else {
+			touchStartY.current = 0;
+		}
+	};
+
+	const handleTouchMove = (e) => {
+		if (touchStartY.current === 0) return;
+		const currentY = e.touches[0].clientY;
+		const diff = currentY - touchStartY.current;
+		if (diff > 0 && window.scrollY === 0) {
+			setIsPulling(true);
+			setPullDistance(Math.min(diff * 0.45, 80));
+		}
+	};
+
+	const handleTouchEnd = () => {
+		if (pullDistance > 50) {
+			refetch();
+		}
+		setIsPulling(false);
+		setPullDistance(0);
+		touchStartY.current = 0;
+	};
+
 	const articles = data?.articles || [];
 
 	const filteredArticles = searchQuery.trim()
@@ -57,14 +119,51 @@ const NewsPage = () => {
 		: articles;
 
 	const handleDiscussOnWinker = (article) => {
-		// Navigate to home and populate create post or open modal
 		const text = `Discussing: "${article.title}" via ${article.source} ${article.trendingTag?.split("·")[0] || ""}\n${article.link}`;
 		navigator.clipboard.writeText(text);
 		navigate(`/?share=${encodeURIComponent(text)}`);
 	};
 
 	return (
-		<div className="flex-[4_4_0] min-w-0 w-full border-r border-gray-700 min-h-screen">
+		<div
+			onTouchStart={handleTouchStart}
+			onTouchMove={handleTouchMove}
+			onTouchEnd={handleTouchEnd}
+			className="flex-[4_4_0] min-w-0 w-full border-r border-gray-700 min-h-screen relative"
+		>
+			{/* Floating "↑ New stories" Pill */}
+			{showScrollTopPill && (
+				<button
+					onClick={() => {
+						window.scrollTo({ top: 0, behavior: "smooth" });
+						refetch();
+					}}
+					className="fixed top-14 left-1/2 -translate-x-1/2 z-30 bg-primary text-white text-xs font-semibold px-4 py-1.5 rounded-full shadow-lg hover:bg-sky-400 active:scale-95 transition-all flex items-center gap-1.5 animate-in fade-in slide-in-from-top-2"
+				>
+					<span>↑</span>
+					<span>New stories</span>
+				</button>
+			)}
+
+			{/* Pull to refresh visual feedback on mobile */}
+			{isPulling && pullDistance > 0 && (
+				<div
+					style={{ height: `${pullDistance}px` }}
+					className="flex items-center justify-center overflow-hidden transition-all text-xs text-sky-400 bg-stone-900/50 border-b border-stone-800"
+				>
+					<div className="flex items-center gap-2">
+						<span
+							className={`transition-transform duration-200 text-sm ${
+								pullDistance > 50 ? "rotate-180" : ""
+							}`}
+						>
+							↓
+						</span>
+						<span>{pullDistance > 50 ? "Release to refresh" : "Pull down to refresh news"}</span>
+					</div>
+				</div>
+			)}
+
 			{/* Top Header */}
 			<div className="p-3 sm:p-4 border-b border-gray-700 sticky top-12 md:top-0 bg-black/85 backdrop-blur z-20">
 				<div className="flex justify-between items-center mb-3">
@@ -122,8 +221,16 @@ const NewsPage = () => {
 				</div>
 			</div>
 
-			{/* Loading State */}
-			{(isLoading || isRefetching) && (
+			{/* Background Updating Banner */}
+			{isRefetching && !isLoading && (
+				<div className="w-full bg-sky-950/40 py-2 flex items-center justify-center gap-2 border-b border-sky-800/40 text-xs text-sky-300 animate-in fade-in">
+					<span className="loading loading-spinner loading-xs text-sky-400"></span>
+					<span>Fetching latest breaking news...</span>
+				</div>
+			)}
+
+			{/* Initial Loading State */}
+			{isLoading && articles.length === 0 && (
 				<div className="flex flex-col items-center justify-center p-16 gap-3">
 					<LoadingSpinner size="lg" />
 					<span className="text-sm text-stone-400">Curating top India stories & trends...</span>

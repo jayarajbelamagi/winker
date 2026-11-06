@@ -1,8 +1,14 @@
 import { Link, useLocation } from "react-router-dom";
 import { MdHomeFilled, MdOutlineHome } from "react-icons/md";
-import { IoNotifications, IoNotificationsOutline, IoNewspaper, IoNewspaperOutline } from "react-icons/io5";
+import {
+  IoNotifications,
+  IoNotificationsOutline,
+  IoNewspaper,
+  IoNewspaperOutline,
+  IoMail,
+  IoMailOutline,
+} from "react-icons/io5";
 import { AiOutlineRobot, AiFillRobot } from "react-icons/ai";
-import { FaUser, FaRegUser } from "react-icons/fa";
 
 const BottomNav = ({ authUser }) => {
   const location = useLocation();
@@ -11,7 +17,7 @@ const BottomNav = ({ authUser }) => {
   const isHome = pathname === "/";
   const isNews = pathname === "/news";
   const isNotifications = pathname === "/notifications";
-  const isChat = pathname === "/chat";
+  const isMessages = pathname.startsWith("/messages");
   const isProfile = authUser?.username && pathname === `/profile/${authUser.username}`;
 
   return (
@@ -42,6 +48,19 @@ const BottomNav = ({ authUser }) => {
         )}
       </Link>
 
+      {/* Direct Messages (Texting) */}
+      <Link
+        to="/messages"
+        className="flex flex-col items-center justify-center p-2 text-white hover:text-primary transition"
+        title="Direct Messages"
+      >
+        {isMessages ? (
+          <IoMail className="w-6 h-6 text-primary" />
+        ) : (
+          <IoMailOutline className="w-6 h-6 text-stone-400" />
+        )}
+      </Link>
+
       {/* Notifications */}
       <Link
         to="/notifications"
@@ -52,19 +71,6 @@ const BottomNav = ({ authUser }) => {
           <IoNotifications className="w-6 h-6 text-white" />
         ) : (
           <IoNotificationsOutline className="w-6 h-6 text-stone-400" />
-        )}
-      </Link>
-
-      {/* Thook AI Chat */}
-      <Link
-        to="/chat"
-        className="flex flex-col items-center justify-center p-2 text-white hover:text-primary transition"
-        title="Thook AI"
-      >
-        {isChat ? (
-          <AiFillRobot className="w-6 h-6 text-sky-400" />
-        ) : (
-          <AiOutlineRobot className="w-6 h-6 text-stone-400" />
         )}
       </Link>
 
