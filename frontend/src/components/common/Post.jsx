@@ -8,7 +8,7 @@ import { toast } from "react-hot-toast";
 
 import LoadingSpinner from "./LoadingSpinner";
 import { formatPostDate } from "../../utils/date";
-import { apiUrl } from "../../lib/api";
+import { apiFetch } from "../../lib/api";
 
 const Post = ({ post }) => {
   const [comment, setComment] = useState("");
@@ -26,9 +26,8 @@ const Post = ({ post }) => {
   // 🗑️ Delete Post
   const { mutate: deletePost, isPending: isDeleting } = useMutation({
     mutationFn: async () => {
-      const res = await fetch(apiUrl(`/api/posts/${post._id}`), {
+      const res = await apiFetch(`/api/posts/${post._id}`, {
         method: "DELETE",
-        credentials: "include",
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Something went wrong");
@@ -43,22 +42,17 @@ const Post = ({ post }) => {
   // ❤️ Like Post (with optimistic update)
   const { mutate: likePost, isPending: isLiking } = useMutation({
     mutationFn: async () => {
-      const res = await fetch(apiUrl(`/api/posts/like/${post._id}`), {
+      const res = await apiFetch(`/api/posts/like/${post._id}`, {
         method: "POST",
-        credentials: "include",
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Something went wrong");
-      return data; // this should return updated likes array from backend
+      return data; // returns updated likes array from backend
     },
     onMutate: async () => {
-      // Cancel ongoing queries
       await queryClient.cancelQueries({ queryKey: ["posts"] });
-
-      // Snapshot before update
       const previousPosts = queryClient.getQueryData(["posts"]);
 
-      // Optimistically update
       queryClient.setQueryData(["posts"], (oldPosts) =>
         oldPosts?.map((p) =>
           p._id === post._id
@@ -75,12 +69,10 @@ const Post = ({ post }) => {
       return { previousPosts };
     },
     onError: (error, _, context) => {
-      // Rollback on error
       queryClient.setQueryData(["posts"], context.previousPosts);
       toast.error(error.message);
     },
     onSettled: () => {
-      // Always re-sync with backend
       queryClient.invalidateQueries({ queryKey: ["posts"] });
     },
   });
@@ -88,10 +80,8 @@ const Post = ({ post }) => {
   // 💬 Comment on Post
   const { mutate: commentPost, isPending: isCommenting } = useMutation({
     mutationFn: async () => {
-      const res = await fetch(apiUrl(`/api/posts/comment/${post._id}`), {
+      const res = await apiFetch(`/api/posts/comment/${post._id}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ text: comment }),
       });
       const data = await res.json();

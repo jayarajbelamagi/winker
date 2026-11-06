@@ -1,18 +1,16 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { apiUrl } from "../lib/api";
+import { apiFetch } from "../lib/api";
 
 const useUpdateUserProfile = () => {
   const queryClient = useQueryClient();
 
-  const { mutateAsync: updateProfile, isLoading: isUpdatingProfile } = useMutation({
+  const { mutateAsync: updateProfile, isPending: isUpdatingProfile } = useMutation({
     mutationFn: async (formDataWithImages) => {
       try {
-        const res = await fetch(apiUrl("/api/users/update"), {
+        const res = await apiFetch("/api/users/update", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify(formDataWithImages), // send base64 directly
+          body: JSON.stringify(formDataWithImages),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Something went wrong");

@@ -2,7 +2,7 @@ import Post from "./Post";
 import PostSkeleton from "../skeletons/PostSkeleton";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { apiUrl } from "../../lib/api";
+import { apiFetch } from "../../lib/api";
 
 const Posts = ({ feedType, username, userId }) => {
 	const [searchTerm, setSearchTerm] = useState("");
@@ -10,15 +10,15 @@ const Posts = ({ feedType, username, userId }) => {
 	const getPostEndpoint = () => {
 		switch (feedType) {
 			case "forYou":
-				return apiUrl("/api/posts/all");
+				return "/api/posts/all";
 			case "following":
-				return apiUrl("/api/posts/following");
+				return "/api/posts/following";
 			case "posts":
-				return apiUrl(`/api/posts/user/${username}`);
+				return `/api/posts/user/${username}`;
 			case "likes":
-				return apiUrl(`/api/posts/likes/${userId}`);
+				return `/api/posts/likes/${userId}`;
 			default:
-				return apiUrl("/api/posts/all");
+				return "/api/posts/all";
 		}
 	};
 
@@ -32,7 +32,7 @@ const Posts = ({ feedType, username, userId }) => {
 	} = useQuery({
 		queryKey: ["posts", feedType, username, userId],
 		queryFn: async () => {
-			const res = await fetch(POST_ENDPOINT, { credentials: "include" });
+			const res = await apiFetch(POST_ENDPOINT);
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.error || "Something went wrong");
 			return data;
@@ -48,9 +48,9 @@ const Posts = ({ feedType, username, userId }) => {
 		(feedType === "forYou" || feedType === "following") && searchTerm
 			? posts?.filter(
 					(post) =>
-						post.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
-						post.user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-						post.user.fullName.toLowerCase().includes(searchTerm.toLowerCase())
+						post.text?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+						post.user?.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+						post.user?.fullName?.toLowerCase().includes(searchTerm.toLowerCase())
 			  )
 			: posts;
 
@@ -76,7 +76,7 @@ const Posts = ({ feedType, username, userId }) => {
 				</div>
 			)}
 			{!isLoading && !isRefetching && filteredPosts?.length === 0 && (
-				<p className="text-center my-4">No posts found 😕</p>
+				<p className="text-center my-4 text-stone-400">No posts found 😕</p>
 			)}
 			{!isLoading && !isRefetching && filteredPosts && (
 				<div>

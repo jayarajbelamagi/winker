@@ -29,43 +29,63 @@ const __dirname = path.resolve();
 // Behind proxy (Render)
 app.set("trust proxy", 1);
 
-// 🔥 CORS CONFIG (FINAL FIX)
+// CORS Configuration
 const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:3000")
 	.split(",")
-	.map((s) => s.trim())
+	.map((s) => s.trim().replace(/\/$/, ""))
 	.filter(Boolean);
+
+const isOriginAllowed = (origin) => {
+	if (!origin) return true; // allow server-to-server, curl, health checks
+	if (allowedOrigins.includes("*")) return true;
+
+	const cleanOrigin = origin.replace(/\/$/, "");
+	if (allowedOrigins.includes(cleanOrigin)) return true;
+
+	// Allow all Vercel deployments (production + preview branches)
+	if (/^https:\/\/[a-zA-Z0-9_-]+\.vercel\.app$/.test(cleanOrigin)) return true;
+
+	// Allow local development
+	if (/^http:\/\/localhost(:\d+)?$/.test(cleanOrigin)) return true;
+	if (/^http:\/\/127\.0\.0\.1(:\d+)?$/.test(cleanOrigin)) return true;
+
+	return false;
+};
 
 const corsOptions = {
 	origin(origin, callback) {
-		// allow server-to-server or Postman
-		if (!origin) return callback(null, true);
-
-		// allow all if "*" is set
-		if (allowedOrigins.includes("*")) {
+		if (isOriginAllowed(origin)) {
 			return callback(null, true);
 		}
-
-		// allow specific origins
-		if (allowedOrigins.includes(origin)) {
-			return callback(null, true);
-		}
-
-		console.warn(`❌ CORS blocked: ${origin}`);
+		console.warn(`❌ CORS blocked origin: ${origin}`);
 		return callback(new Error("Not allowed by CORS"));
 	},
 	credentials: true,
+	methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+	allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
 };
 
-// apply CORS
+// Apply CORS & Handle Preflight
 app.use(cors(corsOptions));
-
-// 🔥 HANDLE PREFLIGHT (THIS WAS MISSING)
 app.options("*", cors(corsOptions));
 
-// middlewares
+// Middlewares
 app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Health & Ping routes (fast, lightweight, warm-up friendly)
+app.get("/", (req, res) => {
+	res.send("Backend is running 🚀");
+});
+
+app.get("/ping", (req, res) => {
+	res.status(200).send("pong");
+});
+
+app.get("/api/health", (req, res) => {
+	res.status(200).json({ status: "ok", uptime: process.uptime(), timestamp: Date.now() });
+});
 
 // API routes
 app.use("/api/auth", authRoutes);
@@ -75,12 +95,13 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/stories", storyRoutes);
 app.use("/api/chat", chatRoutes);
 
-// test route
-app.get("/", (req, res) => {
-	res.send("Backend is running 🚀");
+// Global Error Handler
+app.use((err, req, res, next) => {
+	console.error("Unhandled error:", err.message);
+	res.status(500).json({ error: err.message || "Internal server error" });
 });
 
-// start server
+// Start server
 app.listen(PORT, () => {
 	console.log(`🚀 Server running on port ${PORT}`);
 	connectMongoDB();

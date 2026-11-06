@@ -14,7 +14,7 @@ import { MdEdit } from "react-icons/md";
 import { formatMemberSinceDate } from "../../utils/date";
 import useFollow from "../../hooks/useFollow";
 import useUpdateUserProfile from "../../hooks/useUpdateUserProfile";
-import { apiUrl } from "../../lib/api";
+import { apiFetch } from "../../lib/api";
 
 const ProfilePage = () => {
   const [coverImgPreview, setCoverImgPreview] = useState(null);
@@ -39,9 +39,7 @@ const ProfilePage = () => {
   } = useQuery({
     queryKey: ["userProfile", username],
     queryFn: async () => {
-      const res = await fetch(apiUrl(`/api/users/profile/${username}`), {
-        credentials: "include",
-      });
+      const res = await apiFetch(`/api/users/profile/${username}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Something went wrong");
       return data;
@@ -49,7 +47,7 @@ const ProfilePage = () => {
   });
 
   const isMyProfile = authUser?._id === user?._id;
-  const amIFollowing = authUser?.following.includes(user?._id);
+  const amIFollowing = authUser?.following?.includes(user?._id);
   const memberSinceDate = formatMemberSinceDate(user?.createdAt);
 
   useEffect(() => {
@@ -70,172 +68,171 @@ const ProfilePage = () => {
 
   return (
     <div className="flex-[4_4_0] border-r border-gray-700 min-h-screen">
+      {/* HEADER */}
       {(isLoading || isRefetching) && <ProfileHeaderSkeleton />}
       {!isLoading && !isRefetching && !user && (
         <p className="text-center text-lg mt-4">User not found</p>
       )}
-      {!isLoading && !isRefetching && user && (
-        <>
-          {/* Header */}
-          <div className="flex gap-10 px-4 py-2 items-center">
-            <FaArrowLeft
-              className="w-4 h-4 cursor-pointer"
-              onClick={() => navigate(-1)}
-            />
-            <div className="flex flex-col">
-              <p className="font-bold text-lg">{user.fullName}</p>
-              <span className="text-sm text-slate-500">
-                {user.posts?.length || 0} posts
+
+      <div className="flex flex-col">
+        {!isLoading && !isRefetching && user && (
+          <>
+            <div className="flex gap-10 px-4 py-2 items-center">
+              <span onClick={() => navigate(-1)} className="cursor-pointer">
+                <FaArrowLeft className="w-4 h-4" />
               </span>
-            </div>
-          </div>
-
-          {/* COVER IMAGE */}
-          <div className="relative group/cover">
-            <img
-              src={coverImgPreview || user.coverImg || "/cover.png"}
-              className="h-52 w-full object-cover"
-              alt="cover image"
-            />
-            {isMyProfile && (
-              <div
-                className="absolute top-2 right-2 rounded-full p-2 bg-gray-800 bg-opacity-75 cursor-pointer opacity-0 group-hover/cover:opacity-100 transition duration-200"
-                onClick={() => coverImgRef.current.click()}
-              >
-                <MdEdit className="w-5 h-5 text-white" />
-              </div>
-            )}
-            <input
-              type="file"
-              hidden
-              accept="image/*"
-              ref={coverImgRef}
-              onChange={(e) => handleImgChange(e, "coverImg")}
-            />
-
-            {/* PROFILE IMAGE */}
-            <div className="avatar absolute -bottom-16 left-4">
-              <div className="w-32 rounded-full relative group/avatar">
-                <img
-                  src={profileImgPreview || user.profileImg || "/avatar-placeholder.png"}
-                  alt="profile"
-                />
-                {isMyProfile && (
-                  <div
-                    className="absolute top-5 right-3 p-1 bg-primary rounded-full opacity-0 group-hover/avatar:opacity-100 cursor-pointer"
-                    onClick={() => profileImgRef.current.click()}
-                  >
-                    <MdEdit className="w-4 h-4 text-white" />
-                  </div>
-                )}
-                <input
-                  type="file"
-                  hidden
-                  accept="image/*"
-                  ref={profileImgRef}
-                  onChange={(e) => handleImgChange(e, "profileImg")}
-                />
+              <div className="flex flex-col">
+                <p className="font-bold text-lg">{user.fullName}</p>
               </div>
             </div>
-          </div>
 
-          {/* ACTION BUTTONS */}
-          <div className="flex justify-end px-4 mt-5">
-            {isMyProfile && (
-              <EditProfileModal
-                authUser={authUser}
-                profileImg={profileImgPreview}
-                coverImg={coverImgPreview}
-                setProfileImg={setProfileImgPreview}
-                setCoverImg={setCoverImgPreview}
+            {/* COVER IMAGE */}
+            <div className="relative group/cover">
+              <img
+                src={coverImgPreview || user.coverImg || "/cover.png"}
+                className="h-52 w-full object-cover"
+                alt="cover"
               />
-            )}
-            {!isMyProfile && (
-              <button
-                className="btn btn-outline rounded-full btn-sm"
-                onClick={() => follow(user._id)}
-              >
-                {isPending && "Loading..."}
-                {!isPending && amIFollowing && "Unfollow"}
-                {!isPending && !amIFollowing && "Follow"}
-              </button>
-            )}
-          </div>
-
-          {/* USER INFO */}
-          <div className="flex flex-col gap-4 mt-14 px-4">
-            <div className="flex flex-col">
-              <span className="font-bold text-lg">{user.fullName}</span>
-              <span className="text-sm text-slate-500">@{user.username}</span>
-              <span className="text-sm my-1">{user.bio}</span>
-            </div>
-
-            <div className="flex gap-2 flex-wrap">
-              {user.link && (
-                <div className="flex gap-1 items-center">
-                  <FaLink className="w-3 h-3 text-slate-500" />
-                  <a
-                    href={user.link}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-sm text-blue-500 hover:underline"
-                  >
-                    {user.link}
-                  </a>
+              {isMyProfile && (
+                <div
+                  className="absolute top-2 right-2 rounded-full p-2 bg-gray-800 bg-opacity-75 cursor-pointer opacity-0 group-hover/cover:opacity-100 transition duration-200"
+                  onClick={() => coverImgRef.current?.click()}
+                >
+                  <MdEdit className="w-5 h-5 text-white" />
                 </div>
               )}
-              <div className="flex gap-2 items-center">
-                <IoCalendarOutline className="w-4 h-4 text-slate-500" />
-                <span className="text-sm text-slate-500">{memberSinceDate}</span>
+              <input
+                type="file"
+                hidden
+                accept="image/*"
+                ref={coverImgRef}
+                onChange={(e) => handleImgChange(e, "coverImg")}
+              />
+              <input
+                type="file"
+                hidden
+                accept="image/*"
+                ref={profileImgRef}
+                onChange={(e) => handleImgChange(e, "profileImg")}
+              />
+
+              {/* PROFILE AVATAR */}
+              <div className="avatar absolute -bottom-16 left-4">
+                <div className="w-32 rounded-full relative group/avatar overflow-hidden">
+                  <img
+                    src={profileImgPreview || user.profileImg || "/avatar-placeholder.png"}
+                    alt="avatar"
+                  />
+                  {isMyProfile && (
+                    <div
+                      className="absolute top-5 right-3 p-1 bg-primary rounded-full group-hover/avatar:opacity-100 opacity-0 cursor-pointer"
+                      onClick={() => profileImgRef.current?.click()}
+                    >
+                      <MdEdit className="w-4 h-4 text-white" />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* FOLLOWERS / FOLLOWING */}
-            <div className="flex gap-4 mt-2">
-              <p
-                className="cursor-pointer text-sm text-gray-600"
-                onClick={() => navigate(`/${user.username}/followers`)}
-              >
-                <span className="font-bold">{user.followers.length}</span> Followers
-              </p>
-              <p
-                className="cursor-pointer text-sm text-gray-600"
-                onClick={() => navigate(`/${user.username}/following`)}
-              >
-                <span className="font-bold">{user.following.length}</span> Following
-              </p>
-            </div>
-          </div>
-
-          {/* FEED TYPE TABS */}
-          <div className="flex w-full border-b border-gray-700 mt-4">
-            <div
-              className={`flex justify-center flex-1 p-3 hover:bg-secondary transition duration-300 relative cursor-pointer ${
-                feedType === "posts" ? "font-bold" : ""
-              }`}
-              onClick={() => setFeedType("posts")}
-            >
-              Posts
-              {feedType === "posts" && (
-                <div className="absolute bottom-0 w-10 h-1 rounded-full bg-primary" />
+            {/* ACTION BUTTONS */}
+            <div className="flex justify-end px-4 mt-5">
+              {isMyProfile && (
+                <EditProfileModal
+                  authUser={authUser}
+                  profileImg={profileImgPreview}
+                  coverImg={coverImgPreview}
+                  setProfileImg={setProfileImgPreview}
+                  setCoverImg={setCoverImgPreview}
+                />
+              )}
+              {!isMyProfile && (
+                <button
+                  className="btn btn-outline rounded-full btn-sm"
+                  onClick={() => follow(user._id)}
+                >
+                  {isPending && "Loading..."}
+                  {!isPending && amIFollowing && "Unfollow"}
+                  {!isPending && !amIFollowing && "Follow"}
+                </button>
               )}
             </div>
-            <div
-              className={`flex justify-center flex-1 p-3 text-slate-500 hover:bg-secondary transition duration-300 relative cursor-pointer ${
-                feedType === "likes" ? "font-bold text-white" : ""
-              }`}
-              onClick={() => setFeedType("likes")}
-            >
-              Likes
-              {feedType === "likes" && (
-                <div className="absolute bottom-0 w-10 h-1 rounded-full bg-primary" />
-              )}
-            </div>
-          </div>
-        </>
-      )}
 
-      <Posts feedType={feedType} username={username} userId={user?._id} />
+            {/* USER INFO */}
+            <div className="flex flex-col gap-4 mt-14 px-4">
+              <div className="flex flex-col">
+                <span className="font-bold text-lg">{user.fullName}</span>
+                <span className="text-sm text-slate-500">@{user.username}</span>
+                <span className="text-sm my-1">{user.bio}</span>
+              </div>
+
+              <div className="flex gap-2 flex-wrap">
+                {user.link && (
+                  <div className="flex gap-1 items-center">
+                    <FaLink className="w-3 h-3 text-slate-500" />
+                    <a
+                      href={user.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm text-blue-500 hover:underline"
+                    >
+                      {user.link}
+                    </a>
+                  </div>
+                )}
+                <div className="flex gap-2 items-center">
+                  <IoCalendarOutline className="w-4 h-4 text-slate-500" />
+                  <span className="text-sm text-slate-500">{memberSinceDate}</span>
+                </div>
+              </div>
+
+              {/* FOLLOWERS / FOLLOWING */}
+              <div className="flex gap-4 mt-2">
+                <p
+                  className="cursor-pointer text-sm text-gray-400 hover:underline"
+                  onClick={() => navigate(`/${user.username}/followers`)}
+                >
+                  <span className="font-bold text-white">{user.followers?.length || 0}</span> Followers
+                </p>
+                <p
+                  className="cursor-pointer text-sm text-gray-400 hover:underline"
+                  onClick={() => navigate(`/${user.username}/following`)}
+                >
+                  <span className="font-bold text-white">{user.following?.length || 0}</span> Following
+                </p>
+              </div>
+            </div>
+
+            {/* FEED TYPE TABS */}
+            <div className="flex w-full border-b border-gray-700 mt-4">
+              <div
+                className={`flex justify-center flex-1 p-3 hover:bg-secondary transition duration-300 relative cursor-pointer ${
+                  feedType === "posts" ? "font-bold text-white" : "text-slate-500"
+                }`}
+                onClick={() => setFeedType("posts")}
+              >
+                Posts
+                {feedType === "posts" && (
+                  <div className="absolute bottom-0 w-10 h-1 rounded-full bg-primary" />
+                )}
+              </div>
+              <div
+                className={`flex justify-center flex-1 p-3 hover:bg-secondary transition duration-300 relative cursor-pointer ${
+                  feedType === "likes" ? "font-bold text-white" : "text-slate-500"
+                }`}
+                onClick={() => setFeedType("likes")}
+              >
+                Likes
+                {feedType === "likes" && (
+                  <div className="absolute bottom-0 w-10 h-1 rounded-full bg-primary" />
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        <Posts feedType={feedType} username={username} userId={user?._id} />
+      </div>
     </div>
   );
 };

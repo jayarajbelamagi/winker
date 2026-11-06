@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import HomePage from "./pages/home/HomePage";
@@ -12,50 +12,86 @@ import Sidebar from "./components/common/Sidebar";
 import RightPanel from "./components/common/RightPanel";
 
 import { Toaster } from "react-hot-toast";
-import { useQuery } from "@tanstack/react-query";
-import LoadingSpinner from "./components/common/LoadingSpinner";
-import { apiUrl } from "./lib/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import AppLoadingScreen from "./components/common/AppLoadingScreen";
+import { apiFetch, getStoredToken, clearStoredAuth, wakeUpBackend } from "./lib/api";
 
 import FollowersPage from "./pages/FollowersFollowing/FollowersPage";
 import FollowingPage from "./pages/FollowersFollowing/FollowingPage";
 
 function App() {
-  const [showChat, setShowChat] = useState(false); // new state
+  const queryClient = useQueryClient();
+  const [hasToken, setHasToken] = useState(() => Boolean(getStoredToken()));
 
-  const { data: authUser, isLoading } = useQuery({
+  // Trigger non-blocking backend wake-up immediately on app launch
+  useEffect(() => {
+    wakeUpBackend();
+  }, []);
+
+  const {
+    data: authUser,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ["authUser"],
     queryFn: async () => {
       try {
-        const res = await fetch(apiUrl("/api/auth/me"), { credentials: "include" });
-        const data = await res.json();
-        if (data.error) return null;
+        const res = await apiFetch("/api/auth/me", { timeout: 45000 });
         if (!res.ok) {
-          throw new Error(data.error || "Something went wrong");
+          clearStoredAuth();
+          setHasToken(false);
+          return null;
         }
-        console.log("authUser is here:", data);
+        const data = await res.json();
+        if (data.error) {
+          clearStoredAuth();
+          setHasToken(false);
+          return null;
+        }
         return data;
       } catch (error) {
-        throw new Error(error);
+        console.warn("Auth check failed:", error);
+        clearStoredAuth();
+        setHasToken(false);
+        return null;
       }
     },
+    // Only query if the user has an existing token saved
+    enabled: hasToken,
+    initialData: hasToken ? undefined : null,
     retry: false,
+    staleTime: 5 * 60 * 1000,
   });
 
-  if (isLoading) {
+  // If verifying token, show warm-up loading screen with status & skip option
+  if (hasToken && isLoading) {
     return (
-      <div className="h-screen flex justify-center items-center">
-        <LoadingSpinner size="lg" />
-      </div>
+      <AppLoadingScreen
+        onSkip={() => {
+          clearStoredAuth();
+          setHasToken(false);
+          queryClient.setQueryData(["authUser"], null);
+        }}
+      />
     );
   }
 
   return (
-    <div className="flex max-w-6xl mx-auto relative">
+    <div className="flex max-w-6xl mx-auto relative min-h-screen">
       {authUser && <Sidebar />}
       <Routes>
-        <Route path="/" element={authUser ? <HomePage authUser={authUser} /> : <Navigate to="/login" />} />
-        <Route path="/login" element={!authUser ? <LoginPage /> : <Navigate to="/" />} />
-        <Route path="/signup" element={!authUser ? <SignUpPage /> : <Navigate to="/" />} />
+        <Route
+          path="/"
+          element={authUser ? <HomePage authUser={authUser} /> : <Navigate to="/login" />}
+        />
+        <Route
+          path="/login"
+          element={!authUser ? <LoginPage /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/signup"
+          element={!authUser ? <SignUpPage /> : <Navigate to="/" />}
+        />
         <Route
           path="/notifications"
           element={authUser ? <NotificationPage /> : <Navigate to="/login" />}

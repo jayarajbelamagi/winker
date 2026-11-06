@@ -1,7 +1,6 @@
-// src/pages/followersfollowing/FollowersPage.jsx
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { apiUrl } from "../../lib/api";
+import { apiFetch } from "../../lib/api";
 
 const FollowersPage = () => {
   const { username } = useParams();
@@ -12,11 +11,9 @@ const FollowersPage = () => {
   useEffect(() => {
     const fetchFollowers = async () => {
       try {
-        const res = await fetch(apiUrl(`/api/users/${username}/followers`), {
-          credentials: "include",
-        });
+        const res = await apiFetch(`/api/users/${username}/followers`);
         const data = await res.json();
-        setFollowers(data);
+        setFollowers(data || []);
       } catch (error) {
         console.error("Error fetching followers:", error);
       } finally {
@@ -29,36 +26,29 @@ const FollowersPage = () => {
   if (loading) return <p className="p-4 text-center text-gray-500">Loading followers...</p>;
 
   return (
-    <div className="max-w-2xl mx-auto mt-6">
-      <h2 className="text-2xl font-bold mb-4 px-4">Followers</h2>
+    <div className="max-w-2xl mx-auto mt-6 w-full px-4">
+      <h2 className="text-2xl font-bold mb-4">Followers</h2>
       {followers.length === 0 ? (
-        <p className="px-4 text-gray-500">No followers found.</p>
+        <p className="text-gray-500">No followers found.</p>
       ) : (
-        <ul>
+        <ul className="divide-y divide-gray-800">
           {followers.map((user) => (
             <li
               key={user._id}
-              className="flex items-center justify-between p-4 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer border-b"
+              className="flex items-center justify-between py-3 px-2 hover:bg-stone-900 rounded cursor-pointer transition"
+              onClick={() => navigate(`/profile/${user.username}`)}
             >
-              <div
-                className="flex items-center"
-                onClick={() => navigate(`/profile/${user.username}`)}
-              >
+              <div className="flex items-center gap-3">
                 <img
                   src={user.profileImg || "/avatar-placeholder.png"}
                   alt={user.username}
-                  className="w-12 h-12 rounded-full object-cover"
+                  className="w-10 h-10 rounded-full object-cover"
                 />
-                <div className="ml-4">
-                  <p className="font-semibold text-gray-900 dark:text-white">{user.fullName}</p>
-                  <p className="text-gray-500 dark:text-gray-400 text-sm">@{user.username}</p>
-                  {user.bio && (
-                    <p className="text-gray-500 dark:text-gray-400 text-sm truncate w-64">{user.bio}</p>
-                  )}
+                <div>
+                  <p className="font-semibold text-white">{user.fullName}</p>
+                  <p className="text-sm text-gray-400">@{user.username}</p>
                 </div>
               </div>
-              {/* Optional follow/unfollow button */}
-              {/* <button className="btn btn-outline btn-sm">Follow</button> */}
             </li>
           ))}
         </ul>

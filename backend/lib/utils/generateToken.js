@@ -6,5 +6,8 @@ export const generateTokenAndSetCookie = (userId, res) => {
 		expiresIn: "15d",
 	});
 
-	res.cookie("jwt", token, getJwtCookieOptions());
+	if (res && typeof res.cookie === "function") {
+		res.cookie("jwt", token, getJwtCookieOptions());
+	}
+	return token;
 };

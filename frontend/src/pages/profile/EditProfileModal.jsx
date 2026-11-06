@@ -21,11 +21,11 @@ const EditProfileModal = ({ authUser, profileImg, coverImg, setProfileImg, setCo
   useEffect(() => {
     if (authUser) {
       setFormData({
-        fullName: authUser.fullName,
-        username: authUser.username,
-        email: authUser.email,
-        bio: authUser.bio,
-        link: authUser.link,
+        fullName: authUser.fullName || "",
+        username: authUser.username || "",
+        email: authUser.email || "",
+        bio: authUser.bio || "",
+        link: authUser.link || "",
         newPassword: "",
         currentPassword: "",
       });
@@ -34,12 +34,16 @@ const EditProfileModal = ({ authUser, profileImg, coverImg, setProfileImg, setCo
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // Send base64 images along with text data
-    const updatedUser = await updateProfile({ ...formData, profileImg, coverImg });
-    // Update UI immediately
-    setProfileImg(updatedUser.profileImg);
-    setCoverImg(updatedUser.coverImg);
-    document.getElementById("edit_profile_modal").close();
+    try {
+      const updatedUser = await updateProfile({ ...formData, profileImg, coverImg });
+      if (updatedUser) {
+        if (updatedUser.profileImg) setProfileImg(updatedUser.profileImg);
+        if (updatedUser.coverImg) setCoverImg(updatedUser.coverImg);
+      }
+      document.getElementById("edit_profile_modal")?.close();
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   return (
@@ -115,7 +119,10 @@ const EditProfileModal = ({ authUser, profileImg, coverImg, setProfileImg, setCo
               name="link"
               onChange={handleInputChange}
             />
-            <button className="btn btn-primary rounded-full btn-sm text-white">
+            <button
+              className="btn btn-primary rounded-full btn-sm text-white"
+              disabled={isUpdatingProfile}
+            >
               {isUpdatingProfile ? "Updating..." : "Update"}
             </button>
           </form>

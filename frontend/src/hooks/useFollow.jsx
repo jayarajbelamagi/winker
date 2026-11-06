@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { apiUrl } from "../lib/api";
+import { apiFetch } from "../lib/api";
 
 const useFollow = () => {
 	const queryClient = useQueryClient();
@@ -8,16 +8,15 @@ const useFollow = () => {
 	const { mutate: follow, isPending } = useMutation({
 		mutationFn: async (userId) => {
 			try {
-				const res = await fetch(apiUrl(`/api/users/follow/${userId}`), {
+				const res = await apiFetch(`/api/users/follow/${userId}`, {
 					method: "POST",
-					credentials: "include",
 				});
 
 				const data = await res.json();
 				if (!res.ok) {
 					throw new Error(data.error || "Something went wrong!");
 				}
-				return;
+				return data;
 			} catch (error) {
 				throw new Error(error.message);
 			}

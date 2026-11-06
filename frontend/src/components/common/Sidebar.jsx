@@ -8,31 +8,37 @@ import { Link } from "react-router-dom";
 import { BiLogOut } from "react-icons/bi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { apiUrl } from "../../lib/api";
+import { apiFetch, clearStoredAuth } from "../../lib/api";
 
 const Sidebar = () => {
 	const queryClient = useQueryClient();
 	const { mutate: logout } = useMutation({
 		mutationFn: async () => {
 			try {
-				const res = await fetch(apiUrl("/api/auth/logout"), {
+				const res = await apiFetch("/api/auth/logout", {
 					method: "POST",
-					credentials: "include",
 				});
 				const data = await res.json();
 
 				if (!res.ok) {
 					throw new Error(data.error || "Something went wrong");
 				}
+				return data;
 			} catch (error) {
-				throw new Error(error);
+				throw new Error(error.message || error);
 			}
 		},
 		onSuccess: () => {
+			clearStoredAuth();
+			queryClient.setQueryData(["authUser"], null);
 			queryClient.invalidateQueries({ queryKey: ["authUser"] });
 		},
 		onError: () => {
-			toast.error("Logout failed");
+			// Ensure user is logged out locally even if backend call fails
+			clearStoredAuth();
+			queryClient.setQueryData(["authUser"], null);
+			queryClient.invalidateQueries({ queryKey: ["authUser"] });
+			toast.success("Logged out");
 		},
 	});
 	const { data: authUser } = useQuery({ queryKey: ["authUser"] });

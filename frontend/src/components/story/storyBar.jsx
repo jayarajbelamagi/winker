@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import StoryCard from "./storyCard";
 import StoryUploader from "./storyUploader";
-import { apiUrl } from "../../lib/api";
+import { apiFetch } from "../../lib/api";
 
 const StoryBar = ({ authUser }) => {
   const [stories, setStories] = useState([]);
@@ -10,11 +10,9 @@ const StoryBar = ({ authUser }) => {
   const fetchStories = useCallback(async () => {
     if (!authUser?._id) return;
     try {
-      const res = await fetch(apiUrl(`/api/stories/feed/${authUser._id}`), {
-        credentials: "include",
-      });
+      const res = await apiFetch(`/api/stories/feed/${authUser._id}`);
       const data = await res.json();
-      setStories(data || []);
+      setStories(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Failed to fetch stories", err);
     }

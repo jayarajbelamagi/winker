@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "react-hot-toast";
-import { apiUrl } from "../../lib/api";
+import { apiFetch } from "../../lib/api";
 
 const StoryViewer = ({ userId, authUser, onClose }) => {
   const [stories, setStories] = useState([]);
@@ -10,9 +10,7 @@ const StoryViewer = ({ userId, authUser, onClose }) => {
   const fetchUserStories = useCallback(async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(apiUrl(`/api/stories/user/${userId}`), {
-        credentials: "include",
-      });
+      const res = await apiFetch(`/api/stories/user/${userId}`);
       const data = await res.json();
       const list = Array.isArray(data) ? data : [];
       setStories(list);
@@ -40,10 +38,10 @@ const StoryViewer = ({ userId, authUser, onClose }) => {
     const timer = setTimeout(() => {
       setActiveIndex((prev) => {
         const next = prev + 1;
-        if (next >= stories.length) return prev; // stop at last; don't auto-close
+        if (next >= stories.length) return prev;
         return next;
       });
-    }, 5000); // 5s per story
+    }, 5000);
     return () => clearTimeout(timer);
   }, [stories, activeIndex]);
 
@@ -71,7 +69,6 @@ const StoryViewer = ({ userId, authUser, onClose }) => {
 
   const story = stories[activeIndex];
   const isVideo = story.type === "video";
-
 
   return (
     <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center" onClick={onClose}>
@@ -146,20 +143,16 @@ const StoryViewer = ({ userId, authUser, onClose }) => {
         </div>
       )}
 
-      {/* View count removed per request */}
-
       {authUser?._id && story?.user && String(authUser._id) === String(story.user._id) && (
         <button
           onClick={async () => {
             try {
-              const res = await fetch(apiUrl(`/api/stories/${story._id}`), {
+              const res = await apiFetch(`/api/stories/${story._id}`, {
                 method: "DELETE",
-                credentials: "include",
               });
               const data = await res.json();
               if (!res.ok) throw new Error(data.error || "Failed to delete story");
               toast.success("Story deleted");
-              // remove from local list and notify home to refresh
               setStories((prev) => {
                 const next = prev.filter((s) => s._id !== story._id);
                 if (next.length === 0) {
@@ -169,7 +162,6 @@ const StoryViewer = ({ userId, authUser, onClose }) => {
                 setActiveIndex((idx) => Math.min(idx, next.length - 1));
                 return next;
               });
-              // trigger home StoryBar to refresh feed without full page reload
               window.dispatchEvent(new Event("stories:refresh"));
             } catch (err) {
               toast.error(err.message);

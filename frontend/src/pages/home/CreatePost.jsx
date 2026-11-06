@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { IoCloseSharp } from "react-icons/io5";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
-import { apiUrl } from "../../lib/api";
+import { apiFetch } from "../../lib/api";
 
 const CreatePost = () => {
 	const [text, setText] = useState("");
@@ -22,12 +22,8 @@ const CreatePost = () => {
 	} = useMutation({
 		mutationFn: async ({ text, img }) => {
 			try {
-				const res = await fetch(apiUrl("/api/posts/create"), {
+				const res = await apiFetch("/api/posts/create", {
 					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-					},
-					credentials: "include",
 					body: JSON.stringify({ text, img }),
 				});
 				const data = await res.json();
@@ -36,7 +32,7 @@ const CreatePost = () => {
 				}
 				return data;
 			} catch (error) {
-				throw new Error(error);
+				throw new Error(error.message || error);
 			}
 		},
 
@@ -67,13 +63,13 @@ const CreatePost = () => {
 	return (
 		<div className='flex p-4 items-start gap-4 border-b border-gray-700'>
 			<div className='avatar'>
-				<div className='w-8 rounded-full'>
-					<img src={authUser.profileImg || "/avatar-placeholder.png"} />
+				<div className='w-8 rounded-full overflow-hidden'>
+					<img src={authUser?.profileImg || "/avatar-placeholder.png"} alt='User avatar' />
 				</div>
 			</div>
 			<form className='flex flex-col gap-2 w-full' onSubmit={handleSubmit}>
 				<textarea
-					className='textarea w-full p-0 text-lg resize-none border-none focus:outline-none  border-gray-800'
+					className='textarea w-full p-0 text-lg resize-none border-none focus:outline-none border-gray-800'
 					placeholder='What is happening?!'
 					value={text}
 					onChange={(e) => setText(e.target.value)}
@@ -84,10 +80,10 @@ const CreatePost = () => {
 							className='absolute top-0 right-0 text-white bg-gray-800 rounded-full w-5 h-5 cursor-pointer'
 							onClick={() => {
 								setImg(null);
-								imgRef.current.value = null;
+								if (imgRef.current) imgRef.current.value = null;
 							}}
 						/>
-						<img src={img} className='w-full mx-auto h-72 object-contain rounded' />
+						<img src={img} className='w-full mx-auto h-72 object-contain rounded' alt='Post preview' />
 					</div>
 				)}
 
@@ -95,16 +91,16 @@ const CreatePost = () => {
 					<div className='flex gap-1 items-center'>
 						<CiImageOn
 							className='fill-primary w-6 h-6 cursor-pointer'
-							onClick={() => imgRef.current.click()}
+							onClick={() => imgRef.current?.click()}
 						/>
 						<BsEmojiSmileFill className='fill-primary w-5 h-5 cursor-pointer' />
 					</div>
 					<input type='file' accept='image/*' hidden ref={imgRef} onChange={handleImgChange} />
-					<button className='btn btn-primary rounded-full btn-sm text-white px-4'>
+					<button className='btn btn-primary rounded-full btn-sm text-white px-4' disabled={isPending}>
 						{isPending ? "Posting..." : "Post"}
 					</button>
 				</div>
-				{isError && <div className='text-red-500'>{error.message}</div>}
+				{isError && <div className='text-red-500 text-sm'>{error.message}</div>}
 			</form>
 		</div>
 	);

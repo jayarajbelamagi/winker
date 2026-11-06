@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { apiUrl } from "../../lib/api";
+import { apiFetch } from "../../lib/api";
 
 const ChatPage = ({ authUser }) => {
   const [message, setMessage] = useState("");
@@ -11,7 +10,6 @@ const ChatPage = ({ authUser }) => {
   const [isSending, setIsSending] = useState(false);
   const chatDivRef = useRef(null);
   const messageInputRef = useRef(null);
-  const queryClient = useQueryClient();
 
   // Initialize session ID
   useEffect(() => {
@@ -34,9 +32,7 @@ const ChatPage = ({ authUser }) => {
   async function loadHistory() {
     try {
       setIsLoading(true);
-      const res = await fetch(apiUrl(`/api/chat/history?sessionId=${sessionId}`), {
-        credentials: "include",
-      });
+      const res = await apiFetch(`/api/chat/history?sessionId=${sessionId}`);
       if (!res.ok) throw new Error("Failed to fetch history");
       const data = await res.json();
       setHistory(data.history || []);
@@ -55,10 +51,8 @@ const ChatPage = ({ authUser }) => {
     setIsSending(true);
 
     try {
-      const res = await fetch(apiUrl("/api/chat/send"), {
+      const res = await apiFetch("/api/chat/send", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           message: trimmedMessage,
           sessionId,
@@ -90,17 +84,6 @@ const ChatPage = ({ authUser }) => {
     }
   }
 
-  function escapeHtml(text) {
-    const map = {
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#039;",
-    };
-    return text.replace(/[&<>"']/g, (m) => map[m]);
-  }
-
   async function startNewChat() {
     const newSessionId = generateSessionId();
     localStorage.setItem("chatSessionId", newSessionId);
@@ -114,9 +97,8 @@ const ChatPage = ({ authUser }) => {
     if (!window.confirm("Are you sure you want to clear all chat history?")) return;
 
     try {
-      const res = await fetch(apiUrl(`/api/chat/clear?sessionId=${sessionId}`), {
+      const res = await apiFetch(`/api/chat/clear?sessionId=${sessionId}`, {
         method: "DELETE",
-        credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to clear history");
       setHistory([]);
@@ -150,8 +132,8 @@ const ChatPage = ({ authUser }) => {
         <div style={styles.historyTitle}>Chat History</div>
         <div id="historyList" style={{ flex: 1, overflowY: "auto" }}>
           {history.slice(-10).reverse().map((chat, idx) => (
-            <div key={idx} style={styles.historyItem} title={escapeHtml(chat.userMessage)}>
-              {escapeHtml(chat.userMessage.substring(0, 30))}...
+            <div key={idx} style={styles.historyItem} title={chat.userMessage}>
+              {chat.userMessage?.substring(0, 30)}...
             </div>
           ))}
         </div>
@@ -179,7 +161,7 @@ const ChatPage = ({ authUser }) => {
               <div key={idx}>
                 {/* User Message */}
                 <div style={styles.messageUser}>
-                  <div style={styles.messageContentUser}>{escapeHtml(chat.userMessage)}</div>
+                  <div style={styles.messageContentUser}>{chat.userMessage}</div>
                 </div>
                 {/* AI Response */}
                 <div style={styles.messageBot}>
