@@ -1,92 +1,67 @@
 import Conversation from "../models/conversation.model.js";
 import Message from "../models/message.model.js";
 import User from "../models/user.model.js";
+import CallSession from "../models/call.model.js";
 import { v2 as cloudinary } from "cloudinary";
-
-// Active Call Sessions Registry (in-memory with DB persistence on completion)
-// Map: callId -> CallSession
-const activeCalls = new Map();
-
-// Helper: Clean expired calls (> 45s ringing without answer or > 4h connected)
-const cleanStaleCalls = () => {
-	const now = Date.now();
-	for (const [callId, call] of activeCalls.entries()) {
-		if (call.status === "ringing" && now - call.startedAt > 45000) {
-			call.status = "missed";
-			call.endedAt = now;
-			logCallInternal(call.caller._id, call.receiver._id, {
-				callType: call.callType,
-				status: "missed",
-				duration: 0,
-			}).catch(() => {});
-			setTimeout(() => activeCalls.delete(callId), 10000);
-		} else if (call.status === "ended" || call.status === "declined" || call.status === "missed") {
-			if (call.endedAt && now - call.endedAt > 15000) {
-				activeCalls.delete(callId);
-			}
-		} else if (call.status === "connected" && now - call.startedAt > 4 * 60 * 60 * 1000) {
-			activeCalls.delete(callId);
-		}
-	}
-};
-
-// Periodically clean stale calls every 30s
-setInterval(cleanStaleCalls, 30000);
 
 // Helper: Internal call logger to DB
 const logCallInternal = async (senderId, receiverId, { callType, duration = 0, status = "completed" }) => {
-	let conversation = await Conversation.findOne({
-		participants: { $all: [senderId, receiverId] },
-	});
-
-	if (!conversation) {
-		conversation = await Conversation.create({
-			participants: [senderId, receiverId],
-			messages: [],
+	try {
+		let conversation = await Conversation.findOne({
+			participants: { $all: [senderId, receiverId] },
 		});
+
+		if (!conversation) {
+			conversation = await Conversation.create({
+				participants: [senderId, receiverId],
+				messages: [],
+			});
+		}
+
+		const formatDur = (sec) => {
+			if (!sec) return "0s";
+			const m = Math.floor(sec / 60);
+			const s = sec % 60;
+			return m > 0 ? `${m}m ${s}s` : `${s}s`;
+		};
+
+		let statusLabel = status;
+		if (status === "completed") {
+			statusLabel = formatDur(duration);
+		} else if (status === "missed") {
+			statusLabel = "Missed call";
+		} else if (status === "declined") {
+			statusLabel = "Declined";
+		}
+
+		const callText = `${callType === "video" ? "📹 Video call" : "📞 Voice call"} (${statusLabel})`;
+
+		const message = new Message({
+			senderId,
+			receiverId,
+			text: callText,
+			callInfo: {
+				callType: callType || "audio",
+				status: status || "completed",
+				duration: duration || 0,
+			},
+			seen: false,
+		});
+
+		await message.save();
+
+		conversation.messages.push(message._id);
+		conversation.lastMessage = {
+			text: callText,
+			senderId,
+			seen: false,
+			createdAt: new Date(),
+		};
+		await conversation.save();
+		return message;
+	} catch (err) {
+		console.error("Error logging call internally:", err);
 	}
-
-	const formatDur = (sec) => {
-		if (!sec) return "0s";
-		const m = Math.floor(sec / 60);
-		const s = sec % 60;
-		return m > 0 ? `${m}m ${s}s` : `${s}s`;
-	};
-
-	let statusLabel = status;
-	if (status === "completed") {
-		statusLabel = formatDur(duration);
-	} else if (status === "missed") {
-		statusLabel = "Missed call";
-	} else if (status === "declined") {
-		statusLabel = "Declined";
-	}
-
-	const callText = `${callType === "video" ? "📹 Video call" : "📞 Voice call"} (${statusLabel})`;
-
-	const message = new Message({
-		senderId,
-		receiverId,
-		text: callText,
-		callInfo: {
-			callType: callType || "audio",
-			status: status || "completed",
-			duration: duration || 0,
-		},
-		seen: false,
-	});
-
-	await message.save();
-
-	conversation.messages.push(message._id);
-	conversation.lastMessage = {
-		text: callText,
-		senderId,
-		seen: false,
-		createdAt: new Date(),
-	};
-	await conversation.save();
-	return message;
 };
 
 // Helper: Check if two users are mutual followers
@@ -332,7 +307,6 @@ export const getEligibleContacts = async (req, res) => {
 // INITIATE A CALL (CALLER SENDS RING TO RECEIVER)
 export const initiateCall = async (req, res) => {
 	try {
-		cleanStaleCalls();
 		const senderId = req.user._id.toString();
 		const { receiverId } = req.params;
 		const { callType = "audio" } = req.body;
@@ -347,7 +321,7 @@ export const initiateCall = async (req, res) => {
 			receiverId
 		);
 
-		if (!isMutual) {
+		if (!isMutual || !user2) {
 			if (u1FollowsU2 && !u2FollowsU1) {
 				return res.status(403).json({
 					error: `You follow @${user2?.username || "this user"}, but they haven't followed you back yet. Calling requires mutual follow.`,
@@ -359,28 +333,34 @@ export const initiateCall = async (req, res) => {
 			}
 		}
 
-		// Check if receiver is already in a call
-		for (const [_, call] of activeCalls.entries()) {
-			if (
-				(call.receiver._id === receiverId || call.caller._id === receiverId) &&
-				(call.status === "ringing" || call.status === "connected")
-			) {
-				return res.status(400).json({ error: `@${user2.username} is currently on another call` });
+		// Auto-cancel any existing active calls by this caller
+		await CallSession.updateMany(
+			{
+				callerId: req.user._id,
+				status: { $in: ["ringing", "connected"] },
+			},
+			{
+				$set: { status: "ended", endedAt: Date.now() },
 			}
-		}
+		);
 
-		// Clear any old active calls by this sender
-		for (const [cId, call] of activeCalls.entries()) {
-			if (call.caller._id === senderId && (call.status === "ringing" || call.status === "connected")) {
-				call.status = "ended";
-				call.endedAt = Date.now();
-				setTimeout(() => activeCalls.delete(cId), 5000);
+		// Clean up any stale ringing calls (> 45s) for the receiver
+		await CallSession.updateMany(
+			{
+				receiverId: user2._id,
+				status: "ringing",
+				startedAt: { $lt: Date.now() - 45000 },
+			},
+			{
+				$set: { status: "missed", endedAt: Date.now() },
 			}
-		}
+		);
 
 		const callId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-		const session = {
+		const newCall = await CallSession.create({
 			callId,
+			callerId: req.user._id,
+			receiverId: user2._id,
 			caller: {
 				_id: senderId,
 				fullName: req.user.fullName,
@@ -388,7 +368,7 @@ export const initiateCall = async (req, res) => {
 				profileImg: req.user.profileImg || "/avatar-placeholder.png",
 			},
 			receiver: {
-				_id: receiverId,
+				_id: user2._id.toString(),
 				fullName: user2.fullName,
 				username: user2.username,
 				profileImg: user2.profileImg || "/avatar-placeholder.png",
@@ -396,37 +376,47 @@ export const initiateCall = async (req, res) => {
 			callType: callType === "video" ? "video" : "audio",
 			status: "ringing",
 			startedAt: Date.now(),
-			connectedAt: null,
-			endedAt: null,
-		};
+		});
 
-		activeCalls.set(callId, session);
-
-		res.status(200).json({ call: session });
+		res.status(200).json({ call: newCall });
 	} catch (error) {
 		console.error("Error in initiateCall:", error);
-		res.status(500).json({ error: "Failed to initiate call" });
+		res.status(500).json({ error: error.message || "Failed to initiate call" });
 	}
 };
 
 // GET ACTIVE CALL FOR LOGGED IN USER (RECEIVER OR CALLER)
 export const getActiveCall = async (req, res) => {
 	try {
-		cleanStaleCalls();
-		const userId = req.user._id.toString();
+		const userId = req.user._id;
 
-		let userCall = null;
-		for (const [_, call] of activeCalls.entries()) {
-			if (
-				(call.receiver._id === userId || call.caller._id === userId) &&
-				(call.status === "ringing" || call.status === "connected" || call.status === "declined" || call.status === "ended")
-			) {
-				userCall = call;
-				break;
+		// Clean up stale ringing calls (> 45s)
+		await CallSession.updateMany(
+			{
+				status: "ringing",
+				startedAt: { $lt: Date.now() - 45000 },
+			},
+			{
+				$set: { status: "missed", endedAt: Date.now() },
 			}
+		);
+
+		// 1. Look for active ringing or connected call
+		let call = await CallSession.findOne({
+			$or: [{ receiverId: userId }, { callerId: userId }],
+			status: { $in: ["ringing", "connected"] },
+		}).sort({ createdAt: -1 });
+
+		// 2. If no active ringing/connected call, check if there was a call ended/declined/missed within the last 8 seconds
+		if (!call) {
+			call = await CallSession.findOne({
+				$or: [{ receiverId: userId }, { callerId: userId }],
+				status: { $in: ["declined", "ended", "missed"] },
+				endedAt: { $gt: Date.now() - 8000 },
+			}).sort({ endedAt: -1 });
 		}
 
-		res.status(200).json({ activeCall: userCall });
+		res.status(200).json({ activeCall: call || null });
 	} catch (error) {
 		console.error("Error in getActiveCall:", error);
 		res.status(500).json({ error: "Failed to check active call" });
@@ -437,7 +427,7 @@ export const getActiveCall = async (req, res) => {
 export const getCallStatus = async (req, res) => {
 	try {
 		const { callId } = req.params;
-		const call = activeCalls.get(callId);
+		const call = await CallSession.findOne({ callId });
 
 		if (!call) {
 			return res.status(200).json({ call: null, status: "ended" });
@@ -455,17 +445,18 @@ export const answerCall = async (req, res) => {
 		const userId = req.user._id.toString();
 		const { callId } = req.params;
 
-		const call = activeCalls.get(callId);
+		const call = await CallSession.findOne({ callId });
 		if (!call) {
 			return res.status(404).json({ error: "Call no longer available or ended" });
 		}
 
-		if (call.receiver._id !== userId) {
+		if (call.receiver._id !== userId && call.receiverId.toString() !== userId) {
 			return res.status(403).json({ error: "Only the recipient can answer this call" });
 		}
 
 		call.status = "connected";
 		call.connectedAt = Date.now();
+		await call.save();
 
 		res.status(200).json({ call });
 	} catch (error) {
@@ -477,24 +468,22 @@ export const answerCall = async (req, res) => {
 // DECLINE INCOMING CALL (RECEIVER)
 export const declineCall = async (req, res) => {
 	try {
-		const userId = req.user._id.toString();
 		const { callId } = req.params;
 
-		const call = activeCalls.get(callId);
+		const call = await CallSession.findOne({ callId });
 		if (!call) {
 			return res.status(200).json({ success: true, message: "Call already closed" });
 		}
 
 		call.status = "declined";
 		call.endedAt = Date.now();
+		await call.save();
 
-		await logCallInternal(call.caller._id, call.receiver._id, {
+		await logCallInternal(call.callerId, call.receiverId, {
 			callType: call.callType,
 			status: "declined",
 			duration: 0,
 		}).catch(() => {});
-
-		setTimeout(() => activeCalls.delete(callId), 10000);
 
 		res.status(200).json({ call });
 	} catch (error) {
@@ -509,13 +498,13 @@ export const endCall = async (req, res) => {
 		const userId = req.user._id.toString();
 		const { callId } = req.params;
 
-		const call = activeCalls.get(callId);
+		const call = await CallSession.findOne({ callId });
 		if (!call) {
 			return res.status(200).json({ success: true, duration: 0 });
 		}
 
-		const isCaller = call.caller._id === userId;
-		const isReceiver = call.receiver._id === userId;
+		const isCaller = call.caller._id === userId || call.callerId.toString() === userId;
+		const isReceiver = call.receiver._id === userId || call.receiverId.toString() === userId;
 
 		if (!isCaller && !isReceiver) {
 			return res.status(403).json({ error: "Not authorized to end this call" });
@@ -529,19 +518,55 @@ export const endCall = async (req, res) => {
 
 		call.status = "ended";
 		call.endedAt = now;
+		await call.save();
 
-		await logCallInternal(call.caller._id, call.receiver._id, {
+		await logCallInternal(call.callerId, call.receiverId, {
 			callType: call.callType,
 			status: wasConnected ? "completed" : "missed",
 			duration,
 		}).catch(() => {});
 
-		setTimeout(() => activeCalls.delete(callId), 10000);
-
 		res.status(200).json({ success: true, duration });
 	} catch (error) {
 		console.error("Error in endCall:", error);
 		res.status(500).json({ error: "Failed to end call" });
+	}
+};
+
+// SIGNAL EXCHANGE FOR WEBRTC (OFFER / ANSWER / ICE)
+export const exchangeSignal = async (req, res) => {
+	try {
+		const { callId } = req.params;
+		const { senderType, signalData } = req.body; // senderType: "caller" | "receiver"
+
+		const call = await CallSession.findOne({ callId });
+		if (!call) return res.status(404).json({ error: "Call not found" });
+
+		if (senderType === "caller") {
+			call.callerSignal = signalData;
+		} else if (senderType === "receiver") {
+			call.receiverSignal = signalData;
+		}
+		await call.save();
+
+		res.status(200).json({ success: true });
+	} catch (error) {
+		res.status(500).json({ error: "Failed to exchange signal" });
+	}
+};
+
+export const getSignal = async (req, res) => {
+	try {
+		const { callId } = req.params;
+		const call = await CallSession.findOne({ callId });
+		if (!call) return res.status(404).json({ error: "Call not found" });
+
+		res.status(200).json({
+			callerSignal: call.callerSignal,
+			receiverSignal: call.receiverSignal,
+		});
+	} catch (error) {
+		res.status(500).json({ error: "Failed to fetch signal" });
 	}
 };
 

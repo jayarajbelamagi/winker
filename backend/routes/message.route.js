@@ -11,6 +11,8 @@ import {
 	answerCall,
 	declineCall,
 	endCall,
+	exchangeSignal,
+	getSignal,
 	logCall,
 } from "../controllers/message.controller.js";
 
@@ -27,6 +29,8 @@ router.post("/call/initiate/:receiverId", protectRoute, initiateCall);
 router.post("/call/answer/:callId", protectRoute, answerCall);
 router.post("/call/decline/:callId", protectRoute, declineCall);
 router.post("/call/end/:callId", protectRoute, endCall);
+router.post("/call/signal/:callId", protectRoute, exchangeSignal);
+router.get("/call/signal/:callId", protectRoute, getSignal);
 router.post("/call/:receiverId", protectRoute, logCall);
 
 // Direct Messages

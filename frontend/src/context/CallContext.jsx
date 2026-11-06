@@ -20,8 +20,9 @@ export const CallProvider = ({ children, authUser }) => {
   const [activeCall, setActiveCall] = useState(null);
   const [incomingCall, setIncomingCall] = useState(null);
 
-  // Poll backend for active calls
   const isCallActive = Boolean(activeCall || incomingCall);
+
+  // 1. Primary TanStack Query Poller (Fast: 800ms when calling/ringing, 1400ms idle)
   const { data: callData } = useQuery({
     queryKey: ["activeCallSession"],
     queryFn: async () => {
@@ -36,11 +37,28 @@ export const CallProvider = ({ children, authUser }) => {
       }
     },
     enabled: Boolean(authUser),
-    refetchInterval: isCallActive ? 1200 : 2500,
+    refetchInterval: isCallActive ? 800 : 1400,
     refetchIntervalInBackground: true,
   });
 
-  // Sync state whenever callData updates from server
+  // 2. Secondary Native Poller (Ensures background tabs on desktop/mobile NEVER sleep)
+  useEffect(() => {
+    if (!authUser) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await apiFetch("/api/messages/call/active");
+        if (res.ok) {
+          const data = await res.json();
+          queryClient.setQueryData(["activeCallSession"], data?.activeCall || null);
+        }
+      } catch (e) {}
+    }, isCallActive ? 900 : 1600);
+
+    return () => clearInterval(interval);
+  }, [authUser, isCallActive, queryClient]);
+
+  // 3. Robust State Synchronization
   useEffect(() => {
     if (!authUser) {
       setActiveCall(null);
@@ -50,26 +68,29 @@ export const CallProvider = ({ children, authUser }) => {
 
     if (!callData) {
       if (incomingCall) setIncomingCall(null);
-      if (activeCall && (activeCall.status === "ended" || activeCall.status === "declined")) {
+      if (activeCall && (activeCall.status === "ended" || activeCall.status === "declined" || activeCall.status === "missed")) {
         setActiveCall(null);
       }
       return;
     }
 
-    const userIdStr = authUser._id.toString();
-    const isReceiver = callData.receiver?._id === userIdStr;
-    const isCaller = callData.caller?._id === userIdStr;
+    const myId = (authUser._id || authUser.id)?.toString();
+    const receiverId = (callData.receiver?._id || callData.receiverId)?.toString();
+    const callerId = (callData.caller?._id || callData.callerId)?.toString();
+
+    const isReceiver = Boolean(myId && receiverId && myId === receiverId);
+    const isCaller = Boolean(myId && callerId && myId === callerId);
 
     if (isReceiver && callData.status === "ringing") {
       // Incoming call ringing for this receiver
       setIncomingCall(callData);
       setActiveCall(null);
-    } else if (callData.status === "connected") {
-      // Connected call for either caller or receiver
+    } else if (callData.status === "connected" && (isReceiver || isCaller)) {
+      // Call is connected
       setIncomingCall(null);
       setActiveCall(callData);
     } else if (isCaller && callData.status === "ringing") {
-      // Caller waiting for receiver to pick up
+      // Caller waiting for receiver to answer
       setActiveCall(callData);
       setIncomingCall(null);
     } else if (callData.status === "declined" || callData.status === "ended" || callData.status === "missed") {
@@ -79,6 +100,25 @@ export const CallProvider = ({ children, authUser }) => {
       }
     }
   }, [callData, authUser]);
+
+  // 4. Tab Title Notification for Incoming Calls
+  useEffect(() => {
+    if (incomingCall) {
+      const origTitle = document.title;
+      let flip = false;
+      const titleTimer = setInterval(() => {
+        document.title = flip
+          ? `📞 Incoming Call from @${incomingCall.caller?.username || "user"}!`
+          : `🔔 Ringing on Winker...`;
+        flip = !flip;
+      }, 1000);
+
+      return () => {
+        clearInterval(titleTimer);
+        document.title = origTitle;
+      };
+    }
+  }, [incomingCall]);
 
   // Caller initiates call
   const startCall = async ({ partner, callType = "audio" }) => {
@@ -160,14 +200,14 @@ export const CallProvider = ({ children, authUser }) => {
     >
       {children}
 
-      {/* Global Incoming Call Alert (rings anywhere in app) */}
+      {/* Global Incoming Call Overlay (Rings on Receiver's Screen Anywhere in the App) */}
       <IncomingCallModal
         incomingCall={incomingCall}
         onAccept={acceptCall}
         onDecline={declineCall}
       />
 
-      {/* Global In-Call Overlay (Audio or Video with video stream & controls) */}
+      {/* Global Active Call Overlay (Audio & Video with PiP and controls) */}
       <CallModal
         isOpen={Boolean(activeCall)}
         callSession={activeCall}
