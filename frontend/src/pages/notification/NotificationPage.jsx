@@ -5,7 +5,7 @@ import { toast } from "react-hot-toast";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 
 import { IoSettingsOutline, IoCall } from "react-icons/io5";
-import { FaUser } from "react-icons/fa";
+import { FaUser, FaRegComment, FaReply } from "react-icons/fa";
 import { FaHeart } from "react-icons/fa6";
 import { MdCallMissed } from "react-icons/md";
 import { apiFetch } from "../../lib/api";
@@ -85,6 +85,8 @@ const NotificationPage = () => {
 								<div className='flex items-center gap-3'>
 									{notification.type === "follow" && <FaUser className='w-6 h-6 text-primary' />}
 									{notification.type === "like" && <FaHeart className='w-6 h-6 text-red-500' />}
+									{notification.type === "comment" && <FaRegComment className='w-6 h-6 text-sky-400' />}
+									{notification.type === "reply" && <FaReply className='w-6 h-6 text-sky-400' />}
 									{notification.type === "call" && (
 										<div className='p-2 rounded-full bg-emerald-500/20 text-emerald-400 animate-pulse'>
 											<IoCall className='w-5 h-5' />
@@ -106,6 +108,8 @@ const NotificationPage = () => {
 											<span className='text-xs text-stone-400'>
 												{notification.type === "follow" && "followed you"}
 												{notification.type === "like" && "liked your post"}
+												{notification.type === "comment" && "commented on your post"}
+												{notification.type === "reply" && "replied to your comment"}
 												{notification.type === "call" && "calling you"}
 												{notification.type === "missed_call" && "missed call"}
 											</span>
