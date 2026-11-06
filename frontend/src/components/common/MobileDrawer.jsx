@@ -1,5 +1,11 @@
 import { Link } from "react-router-dom";
-import { IoCloseSharp, IoNotifications, IoNewspaperOutline, IoMailOutline } from "react-icons/io5";
+import {
+  IoCloseSharp,
+  IoNotifications,
+  IoNewspaperOutline,
+  IoMailOutline,
+  IoCallOutline,
+} from "react-icons/io5";
 import { FaUser } from "react-icons/fa";
 import { BsBookmark } from "react-icons/bs";
 import { AiOutlineRobot } from "react-icons/ai";
@@ -127,6 +133,16 @@ const MobileDrawer = ({ authUser, isOpen, onClose }) => {
             >
               <IoMailOutline className="w-5 h-5 text-stone-400" />
               <span>Direct Messages</span>
+            </Link>
+          </li>
+          <li>
+            <Link
+              to="/calls"
+              onClick={onClose}
+              className="flex items-center gap-4 p-3 rounded-xl hover:bg-stone-900 text-white font-medium text-base transition"
+            >
+              <IoCallOutline className="w-5 h-5 text-emerald-400" />
+              <span>Calls & History</span>
             </Link>
           </li>
           <li>

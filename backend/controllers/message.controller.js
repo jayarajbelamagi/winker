@@ -3,6 +3,7 @@ import Conversation from "../models/conversation.model.js";
 import Message from "../models/message.model.js";
 import User from "../models/user.model.js";
 import CallSession from "../models/call.model.js";
+import Notification from "../models/notification.model.js";
 import { v2 as cloudinary } from "cloudinary";
 
 // Helper: Internal call logger to DB
@@ -386,6 +387,13 @@ export const initiateCall = async (req, res) => {
 			startedAt: Date.now(),
 		});
 
+		// Create real-time notification for receiver
+		await new Notification({
+			from: req.user._id,
+			to: user2._id,
+			type: "call",
+		}).save().catch(() => {});
+
 		res.status(200).json({ call: newCall });
 	} catch (error) {
 		console.error("Error in initiateCall:", error);
@@ -396,7 +404,7 @@ export const initiateCall = async (req, res) => {
 // GET ACTIVE CALL FOR LOGGED IN USER (RECEIVER OR CALLER)
 export const getActiveCall = async (req, res) => {
 	try {
-		const userId = req.user._id;
+		const userIdStr = req.user._id.toString();
 
 		// Clean up stale ringing calls (> 45s)
 		await CallSession.updateMany(
@@ -409,16 +417,26 @@ export const getActiveCall = async (req, res) => {
 			}
 		);
 
-		// 1. Look for active ringing or connected call
+		// 1. Look for active ringing or connected call (matched by ObjectId or String ID)
 		let call = await CallSession.findOne({
-			$or: [{ receiverId: userId }, { callerId: userId }],
+			$or: [
+				{ receiverId: req.user._id },
+				{ "receiver._id": userIdStr },
+				{ callerId: req.user._id },
+				{ "caller._id": userIdStr },
+			],
 			status: { $in: ["ringing", "connected"] },
 		}).sort({ createdAt: -1 });
 
 		// 2. If no active ringing/connected call, check if there was a call ended/declined/missed within the last 8 seconds
 		if (!call) {
 			call = await CallSession.findOne({
-				$or: [{ receiverId: userId }, { callerId: userId }],
+				$or: [
+					{ receiverId: req.user._id },
+					{ "receiver._id": userIdStr },
+					{ callerId: req.user._id },
+					{ "caller._id": userIdStr },
+				],
 				status: { $in: ["declined", "ended", "missed"] },
 				endedAt: { $gt: Date.now() - 8000 },
 			}).sort({ endedAt: -1 });
@@ -534,6 +552,15 @@ export const endCall = async (req, res) => {
 			duration,
 		}).catch(() => {});
 
+		// Create missed call notification for receiver if never connected
+		if (!wasConnected) {
+			await new Notification({
+				from: call.callerId,
+				to: call.receiverId,
+				type: "missed_call",
+			}).save().catch(() => {});
+		}
+
 		res.status(200).json({ success: true, duration });
 	} catch (error) {
 		console.error("Error in endCall:", error);
@@ -575,6 +602,51 @@ export const getSignal = async (req, res) => {
 		});
 	} catch (error) {
 		res.status(500).json({ error: "Failed to fetch signal" });
+	}
+};
+
+// GET CALL HISTORY FOR LOGGED IN USER
+export const getCallHistory = async (req, res) => {
+	try {
+		const userId = req.user._id;
+
+		const callMessages = await Message.find({
+			$or: [{ senderId: userId }, { receiverId: userId }],
+			"callInfo.callType": { $in: ["audio", "video"] },
+		})
+			.sort({ createdAt: -1 })
+			.populate("senderId", "fullName username profileImg")
+			.populate("receiverId", "fullName username profileImg")
+			.limit(60);
+
+		const formatted = callMessages
+			.filter((msg) => msg.senderId && msg.receiverId)
+			.map((msg) => {
+				const isOutgoing = msg.senderId?._id?.toString() === userId.toString();
+				const partner = isOutgoing ? msg.receiverId : msg.senderId;
+
+				let direction = isOutgoing ? "outgoing" : "incoming";
+				if (msg.callInfo?.status === "missed") {
+					direction = isOutgoing ? "outgoing_missed" : "missed";
+				} else if (msg.callInfo?.status === "declined") {
+					direction = isOutgoing ? "outgoing_declined" : "declined";
+				}
+
+				return {
+					_id: msg._id,
+					partner,
+					callType: msg.callInfo?.callType || "audio",
+					status: msg.callInfo?.status || "completed",
+					duration: msg.callInfo?.duration || 0,
+					direction,
+					createdAt: msg.createdAt,
+				};
+			});
+
+		res.status(200).json(formatted);
+	} catch (error) {
+		console.error("Error in getCallHistory:", error);
+		res.status(500).json({ error: "Failed to fetch call history" });
 	}
 };
 

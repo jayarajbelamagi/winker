@@ -1,7 +1,7 @@
 import XSvg from "../svgs/X";
 
 import { MdHomeFilled } from "react-icons/md";
-import { IoNotifications, IoMailOutline } from "react-icons/io5";
+import { IoNotifications, IoMailOutline, IoCallOutline } from "react-icons/io5";
 import { FaUser } from "react-icons/fa";
 import { AiOutlineRobot } from "react-icons/ai";
 import { IoNewspaperOutline } from "react-icons/io5";
@@ -84,7 +84,7 @@ const Sidebar = () => {
 						</Link>
 					</li>
 
-					{/* 4. Messages (Direct Texting & Calling) */}
+					{/* 4. Messages (Direct Texting) */}
 					<li className='flex justify-center md:justify-start'>
 						<Link
 							to='/messages'
@@ -92,6 +92,17 @@ const Sidebar = () => {
 						>
 							<IoMailOutline className='w-7 h-7 group-hover:text-primary transition' />
 							<span className='text-lg hidden md:block font-medium'>Messages</span>
+						</Link>
+					</li>
+
+					{/* 5. Calls (Dedicated Feature) */}
+					<li className='flex justify-center md:justify-start'>
+						<Link
+							to='/calls'
+							className='flex gap-3 items-center hover:bg-stone-900 transition-all rounded-full duration-300 py-2 pl-2 pr-4 max-w-fit cursor-pointer group'
+						>
+							<IoCallOutline className='w-7 h-7 text-emerald-400 group-hover:scale-110 transition' />
+							<span className='text-lg hidden md:block font-medium'>Calls</span>
 						</Link>
 					</li>
 

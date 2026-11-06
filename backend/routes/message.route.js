@@ -13,6 +13,7 @@ import {
 	endCall,
 	exchangeSignal,
 	getSignal,
+	getCallHistory,
 	logCall,
 } from "../controllers/message.controller.js";
 
@@ -21,6 +22,7 @@ const router = express.Router();
 // Conversations & Contacts
 router.get("/conversations", protectRoute, getConversations);
 router.get("/contacts", protectRoute, getEligibleContacts);
+router.get("/calls/history", protectRoute, getCallHistory);
 
 // Active Call Session Signaling Routes (MUST precede /:otherUserId)
 router.get("/call/active", protectRoute, getActiveCall);

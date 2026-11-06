@@ -7,6 +7,8 @@ import {
   IoNewspaperOutline,
   IoMail,
   IoMailOutline,
+  IoCall,
+  IoCallOutline,
 } from "react-icons/io5";
 import { AiOutlineRobot, AiFillRobot } from "react-icons/ai";
 
@@ -18,6 +20,7 @@ const BottomNav = ({ authUser }) => {
   const isNews = pathname === "/news";
   const isNotifications = pathname === "/notifications";
   const isMessages = pathname.startsWith("/messages");
+  const isCalls = pathname.startsWith("/calls");
   const isProfile = authUser?.username && pathname === `/profile/${authUser.username}`;
 
   return (
@@ -35,19 +38,6 @@ const BottomNav = ({ authUser }) => {
         )}
       </Link>
 
-      {/* News (India Trending) */}
-      <Link
-        to="/news"
-        className="flex flex-col items-center justify-center p-2 text-white hover:text-primary transition"
-        title="News"
-      >
-        {isNews ? (
-          <IoNewspaper className="w-6 h-6 text-primary" />
-        ) : (
-          <IoNewspaperOutline className="w-6 h-6 text-stone-400" />
-        )}
-      </Link>
-
       {/* Direct Messages (Texting) */}
       <Link
         to="/messages"
@@ -58,6 +48,32 @@ const BottomNav = ({ authUser }) => {
           <IoMail className="w-6 h-6 text-primary" />
         ) : (
           <IoMailOutline className="w-6 h-6 text-stone-400" />
+        )}
+      </Link>
+
+      {/* Calls (Dedicated Voice & Video calls) */}
+      <Link
+        to="/calls"
+        className="flex flex-col items-center justify-center p-2 text-white hover:text-primary transition"
+        title="Calls"
+      >
+        {isCalls ? (
+          <IoCall className="w-6 h-6 text-emerald-400" />
+        ) : (
+          <IoCallOutline className="w-6 h-6 text-stone-400" />
+        )}
+      </Link>
+
+      {/* News (India Trending) */}
+      <Link
+        to="/news"
+        className="flex flex-col items-center justify-center p-2 text-white hover:text-primary transition"
+        title="News"
+      >
+        {isNews ? (
+          <IoNewspaper className="w-6 h-6 text-primary" />
+        ) : (
+          <IoNewspaperOutline className="w-6 h-6 text-stone-400" />
         )}
       </Link>
 

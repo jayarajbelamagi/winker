@@ -4,13 +4,16 @@ import { toast } from "react-hot-toast";
 
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 
-import { IoSettingsOutline } from "react-icons/io5";
+import { IoSettingsOutline, IoCall } from "react-icons/io5";
 import { FaUser } from "react-icons/fa";
 import { FaHeart } from "react-icons/fa6";
+import { MdCallMissed } from "react-icons/md";
 import { apiFetch } from "../../lib/api";
+import { useCall } from "../../context/CallContext";
 
 const NotificationPage = () => {
 	const queryClient = useQueryClient();
+	const { startCall } = useCall();
 	const { data: notifications, isLoading } = useQuery({
 		queryKey: ["notifications"],
 		queryFn: async () => {
@@ -78,22 +81,46 @@ const NotificationPage = () => {
 				{!isLoading &&
 					notifications?.map((notification) => (
 						<div className='border-b border-gray-700' key={notification._id}>
-							<div className='flex gap-2 p-4 items-center'>
-								{notification.type === "follow" && <FaUser className='w-6 h-6 text-primary' />}
-								{notification.type === "like" && <FaHeart className='w-6 h-6 text-red-500' />}
-								<Link to={`/profile/${notification.from?.username}`} className='flex items-center gap-2'>
-									<div className='avatar'>
-										<div className='w-8 rounded-full overflow-hidden'>
-											<img src={notification.from?.profileImg || "/avatar-placeholder.png"} alt='' />
+							<div className='flex gap-2 p-4 items-center justify-between'>
+								<div className='flex items-center gap-3'>
+									{notification.type === "follow" && <FaUser className='w-6 h-6 text-primary' />}
+									{notification.type === "like" && <FaHeart className='w-6 h-6 text-red-500' />}
+									{notification.type === "call" && (
+										<div className='p-2 rounded-full bg-emerald-500/20 text-emerald-400 animate-pulse'>
+											<IoCall className='w-5 h-5' />
 										</div>
-									</div>
-									<div className='flex gap-1 text-sm'>
-										<span className='font-bold hover:underline'>@{notification.from?.username}</span>{" "}
-										<span className='text-stone-400'>
-											{notification.type === "follow" ? "followed you" : "liked your post"}
-										</span>
-									</div>
-								</Link>
+									)}
+									{notification.type === "missed_call" && (
+										<div className='p-2 rounded-full bg-red-500/20 text-red-400'>
+											<MdCallMissed className='w-5 h-5' />
+										</div>
+									)}
+									<Link to={`/profile/${notification.from?.username}`} className='flex items-center gap-2'>
+										<div className='avatar'>
+											<div className='w-8 rounded-full overflow-hidden'>
+												<img src={notification.from?.profileImg || "/avatar-placeholder.png"} alt='' />
+											</div>
+										</div>
+										<div className='flex flex-col text-sm'>
+											<span className='font-bold hover:underline'>@{notification.from?.username}</span>
+											<span className='text-xs text-stone-400'>
+												{notification.type === "follow" && "followed you"}
+												{notification.type === "like" && "liked your post"}
+												{notification.type === "call" && "calling you"}
+												{notification.type === "missed_call" && "missed call"}
+											</span>
+										</div>
+									</Link>
+								</div>
+
+								{(notification.type === "call" || notification.type === "missed_call") && notification.from && (
+									<button
+										onClick={() => startCall({ partner: notification.from, callType: "audio" })}
+										className='btn btn-xs btn-outline rounded-full text-emerald-400 border-emerald-500/40 hover:bg-emerald-500 hover:text-white transition'
+									>
+										Call back
+									</button>
+								)}
 							</div>
 						</div>
 					))}

@@ -24,6 +24,7 @@ import FollowersPage from "./pages/FollowersFollowing/FollowersPage";
 import FollowingPage from "./pages/FollowersFollowing/FollowingPage";
 import PostPage from "./pages/post/PostPage";
 import MessagesPage from "./pages/messages/MessagesPage";
+import CallsPage from "./pages/calls/CallsPage";
 
 import MobileTopBar from "./components/common/MobileTopBar";
 import MobileDrawer from "./components/common/MobileDrawer";
@@ -138,6 +139,10 @@ function App() {
           <Route
             path="/messages/:userId"
             element={authUser ? <MessagesPage authUser={authUser} /> : <Navigate to="/login" />}
+          />
+          <Route
+            path="/calls"
+            element={authUser ? <CallsPage authUser={authUser} /> : <Navigate to="/login" />}
           />
           <Route
             path="/news"
