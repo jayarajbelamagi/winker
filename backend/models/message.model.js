@@ -21,20 +21,8 @@ const messageSchema = new mongoose.Schema(
 			default: null,
 		},
 		callInfo: {
-			callType: {
-				type: String,
-				enum: ["audio", "video"],
-				default: null,
-			},
-			status: {
-				type: String,
-				enum: ["completed", "missed", "declined"],
-				default: null,
-			},
-			duration: {
-				type: Number,
-				default: 0, // in seconds
-			},
+			type: mongoose.Schema.Types.Mixed,
+			default: null,
 		},
 		seen: {
 			type: Boolean,

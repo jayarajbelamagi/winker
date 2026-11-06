@@ -18,6 +18,7 @@ import { Toaster } from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AppLoadingScreen from "./components/common/AppLoadingScreen";
 import { apiFetch, getStoredToken, clearStoredAuth, wakeUpBackend } from "./lib/api";
+import { CallProvider } from "./context/CallContext";
 
 import FollowersPage from "./pages/FollowersFollowing/FollowersPage";
 import FollowingPage from "./pages/FollowersFollowing/FollowingPage";
@@ -88,7 +89,8 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col">
+    <CallProvider authUser={authUser}>
+      <div className="min-h-screen bg-black text-white flex flex-col">
       {/* Mobile Top Header */}
       {authUser && (
         <MobileTopBar
@@ -181,7 +183,8 @@ function App() {
 
       <Toaster />
     </div>
-  );
+  </CallProvider>
+);
 }
 
 export default App;

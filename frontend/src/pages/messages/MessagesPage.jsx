@@ -21,7 +21,7 @@ import { RiChatNewFill } from "react-icons/ri";
 
 import EmojiPicker from "../../components/common/EmojiPicker";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
-import CallModal from "../../components/chat/CallModal";
+import { useCall } from "../../context/CallContext";
 
 // Format "Seen x minutes ago"
 const formatSeenAgo = (dateStr) => {
@@ -49,9 +49,7 @@ const MessagesPage = ({ authUser }) => {
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [searchFilter, setSearchFilter] = useState("");
 
-  // Calling state
-  const [isCallingModalOpen, setIsCallingModalOpen] = useState(false);
-  const [activeCallType, setActiveCallType] = useState("audio");
+  const { startCall: triggerGlobalCall } = useCall();
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -192,8 +190,7 @@ const MessagesPage = ({ authUser }) => {
 
   const startCall = (type) => {
     if (!activePartner) return;
-    setActiveCallType(type);
-    setIsCallingModalOpen(true);
+    triggerGlobalCall({ partner: activePartner, callType: type });
   };
 
   // Find last sent message by authUser to show seen status
@@ -689,17 +686,6 @@ const MessagesPage = ({ authUser }) => {
           </div>
         </div>
       )}
-
-      {/* CALL MODAL (AUDIO & VIDEO) */}
-      <CallModal
-        isOpen={isCallingModalOpen}
-        onClose={() => setIsCallingModalOpen(false)}
-        partner={activePartner}
-        callType={activeCallType}
-        onCallEnded={({ callType, duration, status }) => {
-          logCallMutation({ callType, duration, status });
-        }}
-      />
     </div>
   );
 };
