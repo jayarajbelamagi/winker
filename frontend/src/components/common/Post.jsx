@@ -3,7 +3,7 @@ import { FaTrash } from "react-icons/fa";
 import { FiShare2 } from "react-icons/fi";
 import { BsBookmark, BsBookmarkFill } from "react-icons/bs";
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 
@@ -13,6 +13,7 @@ import { apiFetch } from "../../lib/api";
 
 const Post = ({ post }) => {
   const [comment, setComment] = useState("");
+  const navigate = useNavigate();
   const { data: authUser } = useQuery({ queryKey: ["authUser"] });
   const queryClient = useQueryClient();
 
@@ -166,8 +167,19 @@ const Post = ({ post }) => {
     }
   };
 
+  const handlePostClick = (e) => {
+    // If the click is on an interactive element, let its own action execute
+    if (e.target.closest("a, button, input, textarea, svg, .modal, .no-nav")) {
+      return;
+    }
+    navigate(`/post/${post._id}`);
+  };
+
   return (
-    <div className="flex gap-3 items-start p-4 border-b border-gray-700 hover:bg-stone-900/30 transition">
+    <div
+      onClick={handlePostClick}
+      className="flex gap-3 items-start p-3 sm:p-4 border-b border-gray-700 hover:bg-stone-900/30 transition cursor-pointer"
+    >
       <div className="avatar">
         <Link
           to={`/profile/${postOwner?.username || ""}`}

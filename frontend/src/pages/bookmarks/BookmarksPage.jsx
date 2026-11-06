@@ -16,9 +16,9 @@ const BookmarksPage = () => {
 	});
 
 	return (
-		<div className="flex-[4_4_0] border-r border-gray-700 min-h-screen">
+		<div className="flex-[4_4_0] min-w-0 w-full border-r border-gray-700 min-h-screen">
 			{/* Header */}
-			<div className="flex items-center justify-between p-4 border-b border-gray-700 sticky top-0 bg-black/80 backdrop-blur z-10">
+			<div className="flex items-center justify-between p-3 sm:p-4 border-b border-gray-700 sticky top-12 md:top-0 bg-black/85 backdrop-blur z-10">
 				<div>
 					<h1 className="text-xl font-bold text-white flex items-center gap-2">
 						<BsBookmark className="text-primary" />

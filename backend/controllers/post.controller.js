@@ -94,17 +94,122 @@ export const commentOnPost = async (req, res) => {
 		const { text } = req.body;
 		const postId = req.params.id;
 
-		if (!text) return res.status(400).json({ error: "Text is required" });
+		if (!text || !text.trim()) return res.status(400).json({ error: "Text is required" });
 
 		const post = await Post.findById(postId);
 		if (!post) return res.status(404).json({ error: "Post not found" });
 
-		post.comments.push({ user: req.user._id, text });
+		post.comments.push({ user: req.user._id, text: text.trim(), createdAt: new Date() });
 		await post.save();
+
+		// Notify post author if not self
+		if (post.user.toString() !== req.user._id.toString()) {
+			await new Notification({
+				from: req.user._id,
+				to: post.user,
+				type: "comment",
+			}).save();
+		}
+
+		const populatedPost = await Post.findById(postId)
+			.populate("user", "-password")
+			.populate("comments.user", "-password")
+			.populate("comments.replies.user", "-password");
+
+		res.status(200).json(populatedPost.comments);
+	} catch (error) {
+		console.error("Error in commentOnPost:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+// REPLY TO A COMMENT ON A POST
+export const replyToComment = async (req, res) => {
+	try {
+		const { postId, commentId } = req.params;
+		const { text } = req.body;
+
+		if (!text || !text.trim()) return res.status(400).json({ error: "Reply text is required" });
+
+		const post = await Post.findById(postId);
+		if (!post) return res.status(404).json({ error: "Post not found" });
+
+		const comment = post.comments.id(commentId);
+		if (!comment) return res.status(404).json({ error: "Comment not found" });
+
+		if (!comment.replies) comment.replies = [];
+		comment.replies.push({
+			user: req.user._id,
+			text: text.trim(),
+			createdAt: new Date(),
+		});
+
+		await post.save();
+
+		// Notify comment author if not self
+		if (comment.user.toString() !== req.user._id.toString()) {
+			await new Notification({
+				from: req.user._id,
+				to: comment.user,
+				type: "comment",
+			}).save();
+		}
+
+		const populatedPost = await Post.findById(postId)
+			.populate("user", "-password")
+			.populate("comments.user", "-password")
+			.populate("comments.replies.user", "-password");
+
+		res.status(200).json(populatedPost.comments);
+	} catch (error) {
+		console.error("Error in replyToComment:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+// LIKE / UNLIKE COMMENT
+export const likeComment = async (req, res) => {
+	try {
+		const { postId, commentId } = req.params;
+		const userId = req.user._id;
+
+		const post = await Post.findById(postId);
+		if (!post) return res.status(404).json({ error: "Post not found" });
+
+		const comment = post.comments.id(commentId);
+		if (!comment) return res.status(404).json({ error: "Comment not found" });
+
+		if (!comment.likes) comment.likes = [];
+		const isLiked = comment.likes.some((id) => id.toString() === userId.toString());
+
+		if (isLiked) {
+			comment.likes = comment.likes.filter((id) => id.toString() !== userId.toString());
+		} else {
+			comment.likes.push(userId);
+		}
+
+		await post.save();
+		res.status(200).json(comment.likes);
+	} catch (error) {
+		console.error("Error in likeComment:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+// GET SINGLE POST BY ID
+export const getPostById = async (req, res) => {
+	try {
+		const { id } = req.params;
+		const post = await Post.findById(id)
+			.populate("user", "-password")
+			.populate("comments.user", "-password")
+			.populate("comments.replies.user", "-password");
+
+		if (!post) return res.status(404).json({ error: "Post not found" });
 
 		res.status(200).json(post);
 	} catch (error) {
-		console.error("Error in commentOnPost:", error);
+		console.error("Error in getPostById:", error);
 		res.status(500).json({ error: "Internal server error" });
 	}
 };
@@ -145,7 +250,8 @@ export const getAllPosts = async (req, res) => {
 		const posts = await Post.find(getActivePostFilter())
 			.sort({ createdAt: -1 })
 			.populate("user", "-password")
-			.populate("comments.user", "-password");
+			.populate("comments.user", "-password")
+			.populate("comments.replies.user", "-password");
 
 		res.status(200).json(posts);
 	} catch (error) {
@@ -163,7 +269,8 @@ export const getFollowingPosts = async (req, res) => {
 		const posts = await Post.find(getActivePostFilter({ user: { $in: user.following } }))
 			.sort({ createdAt: -1 })
 			.populate("user", "-password")
-			.populate("comments.user", "-password");
+			.populate("comments.user", "-password")
+			.populate("comments.replies.user", "-password");
 
 		res.status(200).json(posts);
 	} catch (error) {
@@ -181,7 +288,8 @@ export const getUserPosts = async (req, res) => {
 		const posts = await Post.find(getActivePostFilter({ user: user._id }))
 			.sort({ createdAt: -1 })
 			.populate("user", "-password")
-			.populate("comments.user", "-password");
+			.populate("comments.user", "-password")
+			.populate("comments.replies.user", "-password");
 
 		res.status(200).json(posts);
 	} catch (error) {
@@ -198,7 +306,8 @@ export const getLikedPosts = async (req, res) => {
 
 		const posts = await Post.find(getActivePostFilter({ _id: { $in: user.likedPosts } }))
 			.populate("user", "-password")
-			.populate("comments.user", "-password");
+			.populate("comments.user", "-password")
+			.populate("comments.replies.user", "-password");
 
 		res.status(200).json(posts);
 	} catch (error) {
@@ -243,7 +352,8 @@ export const getBookmarkedPosts = async (req, res) => {
 		const posts = await Post.find(getActivePostFilter({ _id: { $in: user.bookmarks || [] } }))
 			.sort({ createdAt: -1 })
 			.populate("user", "-password")
-			.populate("comments.user", "-password");
+			.populate("comments.user", "-password")
+			.populate("comments.replies.user", "-password");
 
 		res.status(200).json(posts);
 	} catch (error) {

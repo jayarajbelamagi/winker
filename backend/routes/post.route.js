@@ -4,6 +4,8 @@ import {
 	createPost,
 	deletePost,
 	commentOnPost,
+	replyToComment,
+	likeComment,
 	likeUnlikePost,
 	getAllPosts,
 	getFollowingPosts,
@@ -11,6 +13,7 @@ import {
 	getLikedPosts,
 	bookmarkPost,
 	getBookmarkedPosts,
+	getPostById,
 } from "../controllers/post.controller.js";
 
 const router = express.Router();
@@ -29,6 +32,11 @@ router.post("/create", protectRoute, createPost);
 router.post("/like/:id", protectRoute, likeUnlikePost);
 router.post("/bookmark/:id", protectRoute, bookmarkPost);
 router.post("/comment/:id", protectRoute, commentOnPost);
+router.post("/comment/:postId/reply/:commentId", protectRoute, replyToComment);
+router.post("/comment/:postId/like/:commentId", protectRoute, likeComment);
 router.delete("/:id", protectRoute, deletePost);
+
+// SINGLE POST (Must be after other GET routes to avoid shadowing)
+router.get("/:id", protectRoute, getPostById);
 
 export default router;

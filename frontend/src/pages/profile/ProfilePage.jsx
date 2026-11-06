@@ -96,7 +96,7 @@ const ProfilePage = () => {
   };
 
   return (
-    <div className="flex-[4_4_0] border-r border-gray-700 min-h-screen">
+    <div className="flex-[4_4_0] min-w-0 w-full border-r border-gray-700 min-h-screen">
       {/* Floating Save Bar for Selected Photos */}
       {isMyProfile && (coverImgPreview || profileImgPreview) && (
         <div className="sticky top-2 z-50 bg-sky-600 text-white px-4 py-3 rounded-xl mx-4 my-2 flex justify-between items-center shadow-2xl border border-sky-400 animate-in fade-in">

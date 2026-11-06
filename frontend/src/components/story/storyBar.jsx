@@ -34,7 +34,7 @@ const StoryBar = ({ authUser }) => {
   return (
     <div className="relative">
       <button
-        className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-black/40 text-white px-2 py-1 rounded disabled:opacity-30"
+        className="hidden sm:block absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-black/60 hover:bg-black/80 text-white px-2 py-1 rounded-full disabled:opacity-30 transition"
         onClick={() => scrollerRef.current?.scrollBy({ left: -200, behavior: "smooth" })}
         disabled={!stories.length}
         aria-label="Scroll left"
@@ -42,7 +42,7 @@ const StoryBar = ({ authUser }) => {
         ‹
       </button>
 
-      <div ref={scrollerRef} className="flex gap-3 overflow-x-auto py-2 items-center px-8 scrollbar-hide">
+      <div ref={scrollerRef} className="flex gap-3 overflow-x-auto py-2 items-center px-1 sm:px-8 scrollbar-hide">
         <StoryUploader authUser={authUser} onUploadSuccess={fetchStories} />
         {stories.map((story) => (
           <StoryCard key={story._id} story={story} authUser={authUser} />
@@ -50,7 +50,7 @@ const StoryBar = ({ authUser }) => {
       </div>
 
       <button
-        className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-black/40 text-white px-2 py-1 rounded disabled:opacity-30"
+        className="hidden sm:block absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-black/60 hover:bg-black/80 text-white px-2 py-1 rounded-full disabled:opacity-30 transition"
         onClick={() => scrollerRef.current?.scrollBy({ left: 200, behavior: "smooth" })}
         disabled={!stories.length}
         aria-label="Scroll right"

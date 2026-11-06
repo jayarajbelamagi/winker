@@ -51,9 +51,9 @@ const NewsPage = () => {
 	};
 
 	return (
-		<div className="flex-[4_4_0] border-r border-gray-700 min-h-screen">
+		<div className="flex-[4_4_0] min-w-0 w-full border-r border-gray-700 min-h-screen">
 			{/* Top Header */}
-			<div className="p-4 border-b border-gray-700 sticky top-0 bg-black/85 backdrop-blur z-20">
+			<div className="p-3 sm:p-4 border-b border-gray-700 sticky top-12 md:top-0 bg-black/85 backdrop-blur z-20">
 				<div className="flex justify-between items-center mb-3">
 					<div>
 						<h1 className="text-2xl font-black text-white flex items-center gap-2">

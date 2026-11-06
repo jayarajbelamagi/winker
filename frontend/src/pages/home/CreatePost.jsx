@@ -98,7 +98,7 @@ const CreatePost = () => {
 	};
 
 	return (
-		<div className='flex p-4 items-start gap-4 border-b border-gray-700 relative'>
+		<div className='flex p-3 sm:p-4 items-start gap-3 sm:gap-4 border-b border-gray-700 relative'>
 			<div className='avatar'>
 				<div className='w-8 rounded-full overflow-hidden'>
 					<img
@@ -149,7 +149,7 @@ const CreatePost = () => {
 					</div>
 				)}
 
-				<div className='flex justify-between border-t py-2 border-t-gray-700 relative items-center'>
+				<div className='flex justify-between border-t py-2 border-t-gray-700 relative items-center flex-wrap gap-2'>
 					<div className='flex gap-2 items-center relative'>
 						<button
 							type='button'
