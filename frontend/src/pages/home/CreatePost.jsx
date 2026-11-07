@@ -11,7 +11,7 @@ import EmojiPicker from "../../components/common/EmojiPicker";
 import GifPicker from "../../components/common/GifPicker";
 import { compressImage } from "../../utils/imageCompressor";
 
-const MAX_MEDIA_SIZE = 5 * 1024 * 1024; // 5MB limit
+const MAX_MEDIA_SIZE = 8 * 1024 * 1024; // 8MB limit
 
 const CreatePost = ({ quotedPost: initialQuotedPost = null, onPostSuccess }) => {
 	const [text, setText] = useState("");
@@ -122,9 +122,9 @@ const CreatePost = ({ quotedPost: initialQuotedPost = null, onPostSuccess }) => 
 		const file = e.target.files?.[0];
 		if (!file) return;
 
-		// Enforce 5MB limit
+		// Enforce 8MB limit
 		if (file.size > MAX_MEDIA_SIZE) {
-			toast.error("File exceeds 5MB limit. Please choose a video or image under 5MB.");
+			toast.error("File exceeds 8MB limit. Please choose a video or image under 8MB.");
 			if (fileRef.current) fileRef.current.value = "";
 			return;
 		}
@@ -359,7 +359,7 @@ const CreatePost = ({ quotedPost: initialQuotedPost = null, onPostSuccess }) => 
 							type='button'
 							onClick={() => fileRef.current?.click()}
 							className='p-1.5 rounded-full hover:bg-primary/20 transition'
-							title='Upload photo or video (max 5MB)'
+							title='Upload photo or video (max 8MB)'
 						>
 							<CiImageOn className='fill-primary w-5 h-5 cursor-pointer' />
 						</button>

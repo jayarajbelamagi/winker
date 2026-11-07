@@ -204,6 +204,9 @@ const ProfilePage = () => {
               </span>
               <div className="flex flex-col">
                 <p className="font-bold text-lg">{user.fullName}</p>
+                <span className="text-stone-500 text-xs font-normal">
+                  {user.postsCount ?? 0} {user.postsCount === 1 ? "post" : "posts"}
+                </span>
               </div>
             </div>
 
@@ -362,8 +365,11 @@ const ProfilePage = () => {
                 </div>
               </div>
 
-              {/* FOLLOWERS / FOLLOWING & PROFILE VIEWS */}
+              {/* FOLLOWERS / FOLLOWING / POSTS & PROFILE VIEWS */}
               <div className="flex gap-4 mt-2 flex-wrap items-center">
+                <p className="text-sm text-gray-400">
+                  <span className="font-bold text-white">{user.postsCount ?? 0}</span> Posts
+                </p>
                 <p
                   className="cursor-pointer text-sm text-gray-400 hover:underline"
                   onClick={() => navigate(`/${user.username}/followers`)}

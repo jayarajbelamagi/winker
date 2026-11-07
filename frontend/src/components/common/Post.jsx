@@ -352,7 +352,7 @@ const Post = ({ post }) => {
             </div>
           )}
 
-          {/* Media Display (Photo or Video Player up to 5MB) */}
+          {/* Media Display (Photo or Video Player up to 8MB) */}
           {post?.img && (
             <div className="rounded-xl overflow-hidden border border-gray-800 bg-black/40 my-1">
               {isVideoMedia ? (

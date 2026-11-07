@@ -236,7 +236,7 @@ export const CallProvider = ({ children, authUser }) => {
       <CallModal
         isOpen={Boolean(activeCall)}
         callSession={activeCall}
-        currentUserId={authUser?._id}
+        currentUserId={authUser?._id || authUser?.id}
         onEndCall={endCall}
       />
     </CallContext.Provider>

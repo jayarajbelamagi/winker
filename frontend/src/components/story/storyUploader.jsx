@@ -7,7 +7,7 @@ import { compressImage, dataURLtoFile } from "../../utils/imageCompressor";
 import MusicSearchModal from "./MusicSearchModal";
 import StoryViewer from "./storyViewer";
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB limit strictly enforced
+const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB limit strictly enforced
 
 const StoryUploader = ({ authUser, ownStoryGroup, onUploadSuccess }) => {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -34,9 +34,9 @@ const StoryUploader = ({ authUser, ownStoryGroup, onUploadSuccess }) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Enforce 5MB limit check
+    // Enforce 8MB limit check
     if (file.size > MAX_FILE_SIZE) {
-      toast.error("File exceeds 5MB limit. Please choose a file under 5MB.");
+      toast.error("File exceeds 8MB limit. Please choose a file under 8MB.");
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }

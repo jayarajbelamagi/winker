@@ -160,11 +160,21 @@ const CallModal = ({
   const isSignalingRef = useRef(false);
 
   const callType = callSession?.callType || "audio";
-  const myIdStr = currentUserId?.toString();
+  const myIdStr = (currentUserId || callSession?.currentUserId)?.toString();
   const isCaller =
     callSession?.caller?._id === myIdStr ||
     callSession?.callerId?.toString() === myIdStr;
-  const partner = isCaller ? callSession?.receiver : callSession?.caller;
+  const partner = isCaller
+    ? callSession?.receiver || (callSession?.isGroupCall ? {
+        fullName: callSession.groupName || "Group Call",
+        username: "group",
+        profileImg: "/avatar-placeholder.png",
+      } : null)
+    : callSession?.caller || (callSession?.isGroupCall ? {
+        fullName: callSession.groupName || "Group Call",
+        username: "group",
+        profileImg: "/avatar-placeholder.png",
+      } : null);
 
   // Complete, foolproof hardware shutdown function (Camera LED & Mic guaranteed off)
   const stopAllMedia = () => {
@@ -337,16 +347,30 @@ const CallModal = ({
         pc.addTrack(track, localStream);
       });
 
-      // Trickle ICE candidate event with atomic backend delivery
+      // Batch ICE candidates every 250ms to prevent network flooding and connection dropouts
+      let pendingCandidates = [];
+      let candidateFlushTimer = null;
+
+      const flushCandidates = () => {
+        if (!isMounted || pendingCandidates.length === 0) return;
+        const toSend = [...pendingCandidates];
+        pendingCandidates = [];
+        apiFetch(`/api/messages/call/signal/${callId}`, {
+          method: "POST",
+          body: JSON.stringify({
+            senderType: isCaller ? "caller" : "receiver",
+            candidates: toSend,
+          }),
+        }).catch(() => {});
+      };
+
+      // Trickle ICE candidate event with batched delivery
       pc.onicecandidate = (event) => {
         if (event.candidate && isMounted) {
-          apiFetch(`/api/messages/call/signal/${callId}`, {
-            method: "POST",
-            body: JSON.stringify({
-              senderType: isCaller ? "caller" : "receiver",
-              candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate,
-            }),
-          }).catch(() => {});
+          const cand = event.candidate.toJSON ? event.candidate.toJSON() : event.candidate;
+          pendingCandidates.push(cand);
+          if (candidateFlushTimer) clearTimeout(candidateFlushTimer);
+          candidateFlushTimer = setTimeout(flushCandidates, 250);
         }
       };
 
@@ -510,6 +534,10 @@ const CallModal = ({
 
     return () => {
       isMounted = false;
+      if (candidateFlushTimer) {
+        clearTimeout(candidateFlushTimer);
+        flushCandidates();
+      }
       if (signalingPollRef.current) clearInterval(signalingPollRef.current);
       if (pcRef.current) {
         pcRef.current.close();

@@ -75,6 +75,7 @@ const MessagesPage = ({ authUser }) => {
   const [activeGroup, setActiveGroup] = useState(null);
   const [inputText, setInputText] = useState("");
   const [selectedImg, setSelectedImg] = useState(null);
+  const [mediaType, setMediaType] = useState("image");
   const [isViewOnce, setIsViewOnce] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
@@ -203,13 +204,14 @@ const MessagesPage = ({ authUser }) => {
 
   // 5. Send Message Mutation
   const { mutate: sendMessageMutation, isPending: isSending } = useMutation({
-    mutationFn: async ({ text, img, audio, audioDuration, isViewOnce, callInfo }) => {
+    mutationFn: async ({ text, img, audio, audioDuration, mediaType: sentMediaType, isViewOnce, callInfo }) => {
       const payload = {
         text,
         img: img || undefined,
         imgBase64: img || undefined,
         audio: audio || undefined,
         audioDuration: audioDuration || 0,
+        mediaType: sentMediaType || (audio ? "audio" : img ? (sentMediaType || "image") : "text"),
         isViewOnce: Boolean(isViewOnce),
         callInfo,
       };
@@ -403,20 +405,39 @@ const MessagesPage = ({ authUser }) => {
     sendMessageMutation({
       text: inputText,
       img: selectedImg,
+      mediaType,
       isViewOnce,
     });
   };
 
   const handleImageSelect = async (e) => {
-    const file = e.target.files[0];
-    if (file) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error("File exceeds 8MB limit. Please choose a file under 8MB.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    const isVid = file.type?.startsWith("video");
+    setMediaType(isVid ? "video" : "image");
+
+    if (isVid) {
+      const reader = new FileReader();
+      reader.onload = () => setSelectedImg(reader.result);
+      reader.readAsDataURL(file);
+    } else {
       try {
         const compressed = await compressImage(file, 1600, 0.85);
         setSelectedImg(compressed);
       } catch (err) {
-        toast.error("Failed to process image");
+        const reader = new FileReader();
+        reader.onload = () => setSelectedImg(reader.result);
+        reader.readAsDataURL(file);
       }
     }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   // Calling
@@ -850,6 +871,9 @@ const MessagesPage = ({ authUser }) => {
                     const isOpenedByMe = msg.viewedBy?.some(
                       (id) => (id?._id || id)?.toString() === authUser?._id?.toString()
                     );
+                    const isOpenedByRecipient = Boolean(
+                      msg.viewedBy && msg.viewedBy.length > 0
+                    );
 
                     // Group System Message
                     if (msg.isSystem) {
@@ -923,28 +947,46 @@ const MessagesPage = ({ authUser }) => {
                             {/* View Once Media Bubble */}
                             {isViewOnceMsg ? (
                               <div className="my-1">
-                                {isOpenedByMe ? (
-                                  <div className="flex items-center gap-2 py-1.5 px-3 rounded-xl bg-black/30 border border-white/20 text-xs text-stone-300">
-                                    <span className="text-emerald-400 font-bold">✓</span>
-                                    <span className="italic">Opened</span>
-                                  </div>
+                                {isMine ? (
+                                  /* SENDER VIEW */
+                                  isOpenedByRecipient ? (
+                                    <div className="flex items-center gap-2 py-1.5 px-3 rounded-xl bg-black/30 border border-white/20 text-xs text-white/90">
+                                      <span className="text-emerald-300 font-bold">✓✓</span>
+                                      <span className="italic">Opened</span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-2 py-1.5 px-3 rounded-xl bg-black/30 border border-white/20 text-xs text-white/90">
+                                      <span className="w-4 h-4 rounded-full border border-white/70 flex items-center justify-center text-[10px] font-bold">
+                                        1
+                                      </span>
+                                      <span>View Once {msg.mediaType === "video" ? "Video" : "Photo"} (Sent)</span>
+                                    </div>
+                                  )
                                 ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setViewOnceModalData({
-                                        url: msg.img,
-                                        isVideo: msg.mediaType === "video",
-                                        messageId: msg._id,
-                                      })
-                                    }
-                                    className="flex items-center gap-2 py-2 px-3.5 rounded-xl bg-black/40 hover:bg-black/60 border border-dashed border-emerald-400 text-emerald-300 font-semibold text-xs transition"
-                                  >
-                                    <span className="w-5 h-5 rounded-full border border-emerald-400 flex items-center justify-center text-[10px]">
-                                      1
-                                    </span>
-                                    <span>View Once {msg.mediaType === "video" ? "Video" : "Photo"}</span>
-                                  </button>
+                                  /* RECIPIENT VIEW */
+                                  isOpenedByMe ? (
+                                    <div className="flex items-center gap-2 py-1.5 px-3 rounded-xl bg-black/30 border border-stone-800 text-xs text-stone-400">
+                                      <span className="text-emerald-400 font-bold">✓</span>
+                                      <span className="italic">Opened</span>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setViewOnceModalData({
+                                          url: msg.img,
+                                          isVideo: msg.mediaType === "video",
+                                          messageId: msg._id,
+                                        })
+                                      }
+                                      className="flex items-center gap-2 py-2 px-3.5 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/50 border border-dashed border-emerald-400 text-emerald-300 font-semibold text-xs transition cursor-pointer"
+                                    >
+                                      <span className="w-5 h-5 rounded-full border border-emerald-400 flex items-center justify-center text-[10px] font-bold">
+                                        1
+                                      </span>
+                                      <span>View Once {msg.mediaType === "video" ? "Video" : "Photo"}</span>
+                                    </button>
+                                  )
                                 )}
                               </div>
                             ) : msg.audio ? (
@@ -1097,21 +1139,30 @@ const MessagesPage = ({ authUser }) => {
               </div>
             </div>
 
-            {/* Attachment Preview (if photo chosen) */}
+            {/* Attachment Preview (if photo or video chosen) */}
             {selectedImg && (
               <div className="p-3 bg-stone-950 border-t border-gray-800 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-gray-700">
-                    <img src={selectedImg} alt="Preview" className="w-full h-full object-cover" />
+                  <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-gray-700 bg-black flex items-center justify-center">
+                    {mediaType === "video" ? (
+                      <video src={selectedImg} className="w-full h-full object-cover" />
+                    ) : (
+                      <img src={selectedImg} alt="Preview" className="w-full h-full object-cover" />
+                    )}
                     <button
-                      onClick={() => setSelectedImg(null)}
+                      onClick={() => {
+                        setSelectedImg(null);
+                        setMediaType("image");
+                      }}
                       className="absolute top-0.5 right-0.5 p-0.5 bg-black/70 rounded-full text-white"
                     >
                       <IoCloseSharp className="w-3.5 h-3.5" />
                     </button>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-xs text-stone-300 font-medium">Photo attached</span>
+                    <span className="text-xs text-stone-300 font-medium">
+                      {mediaType === "video" ? "Video attached" : "Photo attached"}
+                    </span>
                     {isViewOnce && (
                       <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
                         <span>1️⃣ View once enabled</span>
@@ -1129,7 +1180,7 @@ const MessagesPage = ({ authUser }) => {
                       ? "bg-emerald-500/20 text-emerald-300 border-emerald-400"
                       : "bg-stone-900 text-stone-400 border-stone-700 hover:text-white"
                   }`}
-                  title="Make this a single-view photo"
+                  title="Make this a single-view media"
                 >
                   1️⃣ View Once {isViewOnce ? "(ON)" : ""}
                 </button>
@@ -1175,13 +1226,13 @@ const MessagesPage = ({ authUser }) => {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     className="p-2 rounded-full text-stone-400 hover:text-primary hover:bg-stone-900 transition"
-                    title="Send photo"
+                    title="Send photo or video"
                   >
                     <FiImage className="w-5 h-5" />
                   </button>
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/*,video/*"
                     ref={fileInputRef}
                     hidden
                     onChange={handleImageSelect}
@@ -1203,7 +1254,7 @@ const MessagesPage = ({ authUser }) => {
                         ? "bg-emerald-500 text-white border-emerald-400 shadow"
                         : "border-stone-700 text-stone-400 hover:text-emerald-400 hover:border-emerald-500/50"
                     }`}
-                    title="Send 1-time view photo"
+                    title="Send 1-time view photo or video"
                   >
                     1
                   </button>
@@ -1298,16 +1349,39 @@ const MessagesPage = ({ authUser }) => {
           isVideo={viewOnceModalData.isVideo}
           onClose={() => {
             // Call view once opened endpoint
-            if (viewOnceModalData.messageId) {
-              apiFetch(`/api/messages/view-once/${viewOnceModalData.messageId}`, {
+            if (viewOnceModalData?.messageId) {
+              const msgId = viewOnceModalData.messageId;
+              const updateCache = (old) => {
+                if (!Array.isArray(old)) return old;
+                return old.map((m) => {
+                  if (m._id === msgId) {
+                    const viewedBy = m.viewedBy ? [...m.viewedBy] : [];
+                    if (!viewedBy.some((id) => (id?._id || id)?.toString() === authUser?._id?.toString())) {
+                      viewedBy.push(authUser?._id);
+                    }
+                    return { ...m, viewedBy };
+                  }
+                  return m;
+                });
+              };
+
+              if (activeGroup) {
+                queryClient.setQueryData(["groupMessages", activeGroup._id], updateCache);
+              } else if (activePartner) {
+                queryClient.setQueryData(["messages", activePartner._id], updateCache);
+              }
+
+              apiFetch(`/api/messages/view-once/${msgId}`, {
                 method: "POST",
-              }).then(() => {
-                if (activeGroup) {
-                  queryClient.invalidateQueries({ queryKey: ["groupMessages", activeGroup._id] });
-                } else {
-                  queryClient.invalidateQueries({ queryKey: ["messages", activePartner?._id] });
-                }
-              });
+              })
+                .then(() => {
+                  if (activeGroup) {
+                    queryClient.invalidateQueries({ queryKey: ["groupMessages", activeGroup._id] });
+                  } else if (activePartner) {
+                    queryClient.invalidateQueries({ queryKey: ["messages", activePartner?._id] });
+                  }
+                })
+                .catch(() => {});
             }
             setViewOnceModalData(null);
           }}

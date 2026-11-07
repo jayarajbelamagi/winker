@@ -16,6 +16,17 @@ import { apiFetch } from "../../lib/api";
 
 const STORY_DURATION_MS = 15000; // 15 seconds per story
 
+const QUICK_STORY_EMOJIS = ["❤️", "🔥", "😂", "😮", "😢", "👏"];
+
+const formatStoryTime = (dateStr) => {
+  if (!dateStr) return "";
+  const diffSec = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (diffSec < 60) return "just now";
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h`;
+  return `${Math.floor(diffSec / 86400)}d`;
+};
+
 const StoryViewer = ({ userId, authUser, onClose }) => {
   const [stories, setStories] = useState([]);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -33,6 +44,7 @@ const StoryViewer = ({ userId, authUser, onClose }) => {
   const progressIntervalRef = useRef(null);
   const audioRef = useRef(null);
   const videoRef = useRef(null);
+  const touchStartRef = useRef({ x: 0, y: 0, time: 0 });
 
   // 1. Fetch stories of the target user
   const fetchStories = useCallback(async () => {
@@ -205,6 +217,28 @@ const StoryViewer = ({ userId, authUser, onClose }) => {
     }
   };
 
+  // 6b. Quick Emoji Reaction (Instagram style)
+  const handleQuickEmoji = async (emoji) => {
+    if (!currentStory?.userId) return;
+    const heartId = Date.now();
+    setFloatingHearts((prev) => [...prev, { id: heartId, left: Math.random() * 60 + 20, emoji }]);
+    setTimeout(() => {
+      setFloatingHearts((prev) => prev.filter((h) => h.id !== heartId));
+    }, 1500);
+
+    const targetUserId = currentStory.userId._id || currentStory.userId;
+    try {
+      await apiFetch(`/api/messages/send/${targetUserId}`, {
+        method: "POST",
+        body: JSON.stringify({
+          text: `Reacted to your story: ${emoji}`,
+          img: currentStory.mediaUrl,
+        }),
+      });
+      toast.success(`Sent ${emoji} to story!`);
+    } catch (e) {}
+  };
+
   // 7. Delete Story (for Owner)
   const handleDeleteStory = async () => {
     if (!currentStory?._id || !isOwner) return;
@@ -277,22 +311,52 @@ const StoryViewer = ({ userId, authUser, onClose }) => {
       className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center select-none"
       onMouseDown={() => setIsPaused(true)}
       onMouseUp={() => setIsPaused(false)}
-      onTouchStart={() => setIsPaused(true)}
-      onTouchEnd={() => setIsPaused(false)}
+      onTouchStart={(e) => {
+        setIsPaused(true);
+        if (e.touches && e.touches[0]) {
+          touchStartRef.current = {
+            x: e.touches[0].clientX,
+            y: e.touches[0].clientY,
+            time: Date.now(),
+          };
+        }
+      }}
+      onTouchEnd={(e) => {
+        setIsPaused(false);
+        if (e.changedTouches && e.changedTouches[0]) {
+          const deltaX = e.changedTouches[0].clientX - touchStartRef.current.x;
+          const deltaY = e.changedTouches[0].clientY - touchStartRef.current.y;
+          const deltaTime = Date.now() - touchStartRef.current.time;
+
+          // Swipe down to close story (Instagram gesture)
+          if (deltaY > 80 && Math.abs(deltaY) > Math.abs(deltaX) * 1.3 && deltaTime < 400) {
+            onClose();
+            return;
+          }
+
+          // Swipe up: for owner open viewers list
+          if (deltaY < -70 && Math.abs(deltaY) > Math.abs(deltaX) * 1.3 && deltaTime < 400) {
+            if (isOwner) {
+              handleOpenViewers();
+            }
+            return;
+          }
+        }
+      }}
     >
-      {/* Floating Hearts Animation */}
+      {/* Floating Hearts & Reaction Emojis Animation */}
       {floatingHearts.map((heart) => (
         <div
           key={heart.id}
           style={{ left: `${heart.left}%` }}
-          className="absolute bottom-20 z-50 pointer-events-none text-red-500 text-3xl animate-floating-heart"
+          className="absolute bottom-20 z-50 pointer-events-none text-3xl animate-floating-heart"
         >
-          ❤️
+          {heart.emoji || "❤️"}
         </div>
       ))}
 
-      {/* Main Story Container */}
-      <div className="relative w-full max-w-md h-full max-h-[92vh] sm:rounded-2xl overflow-hidden bg-black flex flex-col justify-between shadow-2xl">
+      {/* Main Story Container - Edge-to-edge on Mobile (Instagram Style) */}
+      <div className="relative w-full h-[100dvh] sm:h-full sm:max-h-[92vh] sm:max-w-md sm:rounded-3xl overflow-hidden bg-black flex flex-col justify-between shadow-2xl">
         {/* Top Progress Segment Bars */}
         <div className="absolute top-2 left-0 right-0 z-30 px-3 flex gap-1.5 items-center">
           {stories.map((s, idx) => (
@@ -326,15 +390,15 @@ const StoryViewer = ({ userId, authUser, onClose }) => {
               />
             </div>
             <div className="flex flex-col">
-              <span className="text-white text-xs font-bold leading-tight">
-                {storyOwner?.fullName || storyOwner?.username || "User"}
-              </span>
-              <span className="text-stone-400 text-[10px]">
-                {new Date(currentStory.createdAt).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-white text-xs font-bold leading-tight">
+                  {storyOwner?.fullName || storyOwner?.username || "User"}
+                </span>
+                <span className="text-stone-400 text-[11px] font-normal">
+                  · {formatStoryTime(currentStory.createdAt)}
+                </span>
+              </div>
+              <span className="text-stone-400 text-[10px]">@{storyOwner?.username || "user"}</span>
             </div>
 
             {/* Music Badge */}
@@ -443,64 +507,91 @@ const StoryViewer = ({ userId, authUser, onClose }) => {
           )}
         </div>
 
-        {/* Bottom Bar: Owner Viewers Pill OR Viewer Reply + Like Bar */}
-        <div className="relative z-30 p-3 bg-gradient-to-t from-black via-black/80 to-transparent">
+        {/* Bottom Bar: Owner Viewers Pill OR Viewer Reply + Quick Emojis (Instagram Style) */}
+        <div className="relative z-30 p-3 pb-safe bg-gradient-to-t from-black via-black/85 to-transparent">
           {isOwner ? (
-            /* Owner Actions: Viewers count & Delete */
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
+            /* Owner Actions: Viewers count & Delete with swipe up hint */
+            <div className="flex flex-col gap-2">
+              <div
                 onClick={handleOpenViewers}
-                className="flex items-center gap-2 bg-stone-900/90 border border-stone-700/80 hover:border-pink-500 text-white text-xs font-semibold px-4 py-2 rounded-full transition shadow-lg"
+                className="flex items-center justify-center gap-1.5 text-[11px] text-stone-300 hover:text-white cursor-pointer py-1 font-medium"
               >
-                <IoEyeOutline className="w-4 h-4 text-pink-400" />
-                <span>Seen by {currentStory.viewers?.length || 0}</span>
-              </button>
+                <span className="text-pink-400 animate-bounce">▲</span>
+                <span>Swipe up for activity</span>
+              </div>
 
-              <button
-                type="button"
-                onClick={handleDeleteStory}
-                className="p-2 rounded-full bg-stone-900/90 border border-stone-800 text-stone-400 hover:text-red-500 transition"
-                title="Delete this story"
-              >
-                <IoTrashOutline className="w-5 h-5" />
-              </button>
-            </div>
-          ) : (
-            /* Viewer Actions: Reply input & Like Heart */
-            <form onSubmit={handleSendReply} className="flex items-center gap-2">
-              <input
-                type="text"
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                onFocus={() => setIsPaused(true)}
-                onBlur={() => setIsPaused(false)}
-                placeholder={`Reply to ${storyOwner?.fullName || "user"}...`}
-                className="flex-1 bg-stone-900/90 border border-stone-700 rounded-full px-4 py-2.5 text-xs text-white placeholder-stone-500 focus:outline-none focus:border-pink-500 transition shadow-inner"
-              />
-
-              {replyText.trim() ? (
-                <button
-                  type="submit"
-                  disabled={isSendingReply}
-                  className="bg-primary hover:bg-primary/90 text-white p-2.5 rounded-full transition flex-shrink-0"
-                >
-                  <IoSend className="w-4 h-4" />
-                </button>
-              ) : (
+              <div className="flex items-center justify-between">
                 <button
                   type="button"
-                  onClick={handleLikeStory}
-                  className="p-2.5 rounded-full bg-stone-900/90 border border-stone-700 text-white hover:scale-110 active:scale-95 transition flex-shrink-0"
+                  onClick={handleOpenViewers}
+                  className="flex items-center gap-2 bg-stone-900/90 border border-stone-700/80 hover:border-pink-500 text-white text-xs font-semibold px-4 py-2 rounded-full transition shadow-lg active:scale-95"
                 >
-                  {isLiked ? (
-                    <IoHeart className="w-6 h-6 text-red-500 fill-red-500" />
-                  ) : (
-                    <IoHeartOutline className="w-6 h-6" />
-                  )}
+                  <IoEyeOutline className="w-4 h-4 text-pink-400" />
+                  <span>Seen by {currentStory.viewers?.length || 0}</span>
                 </button>
-              )}
-            </form>
+
+                <button
+                  type="button"
+                  onClick={handleDeleteStory}
+                  className="p-2 rounded-full bg-stone-900/90 border border-stone-800 text-stone-400 hover:text-red-500 transition active:scale-95"
+                  title="Delete this story"
+                >
+                  <IoTrashOutline className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Viewer Actions: Quick Emoji Reaction Bar + Reply input + Like Heart (Instagram Style) */
+            <div className="flex flex-col gap-2">
+              {/* Quick Emojis */}
+              <div className="flex items-center justify-around py-1 px-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10">
+                {QUICK_STORY_EMOJIS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => handleQuickEmoji(emoji)}
+                    className="text-xl hover:scale-125 active:scale-90 transition transform p-1"
+                    title={`Send ${emoji}`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+
+              <form onSubmit={handleSendReply} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  onFocus={() => setIsPaused(true)}
+                  onBlur={() => setIsPaused(false)}
+                  placeholder={`Send message to ${storyOwner?.fullName || "user"}...`}
+                  className="flex-1 bg-stone-900/90 border border-stone-700 rounded-full px-4 py-2.5 text-xs text-white placeholder-stone-500 focus:outline-none focus:border-pink-500 transition shadow-inner"
+                />
+
+                {replyText.trim() ? (
+                  <button
+                    type="submit"
+                    disabled={isSendingReply}
+                    className="bg-primary hover:bg-primary/90 text-white p-2.5 rounded-full transition flex-shrink-0 active:scale-95"
+                  >
+                    <IoSend className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleLikeStory}
+                    className="p-2.5 rounded-full bg-stone-900/90 border border-stone-700 text-white hover:scale-110 active:scale-95 transition flex-shrink-0"
+                  >
+                    {isLiked ? (
+                      <IoHeart className="w-6 h-6 text-red-500 fill-red-500" />
+                    ) : (
+                      <IoHeartOutline className="w-6 h-6" />
+                    )}
+                  </button>
+                )}
+              </form>
+            </div>
           )}
         </div>
       </div>

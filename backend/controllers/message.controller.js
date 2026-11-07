@@ -561,10 +561,13 @@ export const initiateCall = async (req, res) => {
 			}
 		}
 
-		// Auto-cancel any existing active calls by this caller
+		// Auto-cancel any existing active calls involving this user
 		await CallSession.updateMany(
 			{
-				callerId: req.user._id,
+				$or: [
+					{ callerId: req.user._id },
+					{ receiverId: req.user._id },
+				],
 				status: { $in: ["ringing", "connected"] },
 			},
 			{
@@ -686,7 +689,7 @@ export const getCallStatus = async (req, res) => {
 	}
 };
 
-// ANSWER INCOMING CALL (RECEIVER)
+// ANSWER INCOMING CALL (RECEIVER OR GROUP PARTICIPANT)
 export const answerCall = async (req, res) => {
 	try {
 		const userId = req.user._id.toString();
@@ -697,8 +700,15 @@ export const answerCall = async (req, res) => {
 			return res.status(404).json({ error: "Call no longer available or ended" });
 		}
 
-		if (call.receiver._id !== userId && call.receiverId.toString() !== userId) {
-			return res.status(403).json({ error: "Only the recipient can answer this call" });
+		const isReceiver =
+			(call.receiver && call.receiver._id === userId) ||
+			(call.receiverId && call.receiverId.toString() === userId);
+		const isParticipant =
+			call.isGroupCall &&
+			call.participantIds?.some((id) => id?.toString() === userId);
+
+		if (!isReceiver && !isParticipant) {
+			return res.status(403).json({ error: "Only the recipient or participant can answer this call" });
 		}
 
 		call.status = "connected";
@@ -726,11 +736,13 @@ export const declineCall = async (req, res) => {
 		call.endedAt = Date.now();
 		await call.save();
 
-		await logCallInternal(call.callerId, call.receiverId, {
-			callType: call.callType,
-			status: "declined",
-			duration: 0,
-		}).catch(() => {});
+		if (call.callerId && call.receiverId) {
+			await logCallInternal(call.callerId, call.receiverId, {
+				callType: call.callType,
+				status: "declined",
+				duration: 0,
+			}).catch(() => {});
+		}
 
 		res.status(200).json({ call });
 	} catch (error) {
@@ -750,10 +762,13 @@ export const endCall = async (req, res) => {
 			return res.status(200).json({ success: true, duration: 0 });
 		}
 
-		const isCaller = call.caller._id === userId || call.callerId.toString() === userId;
-		const isReceiver = call.receiver._id === userId || call.receiverId.toString() === userId;
+		const isCaller = call.caller?._id === userId || call.callerId?.toString() === userId;
+		const isReceiver = call.receiver?._id === userId || call.receiverId?.toString() === userId;
+		const isParticipant =
+			call.isGroupCall &&
+			call.participantIds?.some((id) => id?.toString() === userId);
 
-		if (!isCaller && !isReceiver) {
+		if (!isCaller && !isReceiver && !isParticipant) {
 			return res.status(403).json({ error: "Not authorized to end this call" });
 		}
 
@@ -767,14 +782,16 @@ export const endCall = async (req, res) => {
 		call.endedAt = now;
 		await call.save();
 
-		await logCallInternal(call.callerId, call.receiverId, {
-			callType: call.callType,
-			status: wasConnected ? "completed" : "missed",
-			duration,
-		}).catch(() => {});
+		if (call.callerId && call.receiverId && !call.isGroupCall) {
+			await logCallInternal(call.callerId, call.receiverId, {
+				callType: call.callType,
+				status: wasConnected ? "completed" : "missed",
+				duration,
+			}).catch(() => {});
+		}
 
 		// Create missed call notification for receiver if never connected
-		if (!wasConnected) {
+		if (!wasConnected && call.callerId && call.receiverId && !call.isGroupCall) {
 			await new Notification({
 				from: call.callerId,
 				to: call.receiverId,
@@ -793,7 +810,7 @@ export const endCall = async (req, res) => {
 export const exchangeSignal = async (req, res) => {
 	try {
 		const { callId } = req.params;
-		const { senderType, signalData, candidate } = req.body; // senderType: "caller" | "receiver"
+		const { senderType, signalData, candidate, candidates } = req.body; // senderType: "caller" | "receiver"
 
 		const update = {};
 		if (signalData) {
@@ -802,9 +819,10 @@ export const exchangeSignal = async (req, res) => {
 		}
 
 		const push = {};
-		if (candidate) {
-			if (senderType === "caller") push.callerCandidates = candidate;
-			else if (senderType === "receiver") push.receiverCandidates = candidate;
+		const candidateList = candidates || (candidate ? [candidate] : []);
+		if (candidateList.length > 0) {
+			if (senderType === "caller") push.callerCandidates = { $each: candidateList };
+			else if (senderType === "receiver") push.receiverCandidates = { $each: candidateList };
 		}
 
 		const updateOp = {};
@@ -1293,10 +1311,13 @@ export const initiateGroupCall = async (req, res) => {
 			return res.status(404).json({ error: "Group not found or you are not a member" });
 		}
 
-		// Cancel any existing active calls by this caller
+		// Cancel any existing active calls involving this caller
 		await CallSession.updateMany(
 			{
-				callerId: currentUserId,
+				$or: [
+					{ callerId: currentUserId },
+					{ receiverId: currentUserId },
+				],
 				status: { $in: ["ringing", "connected"] },
 			},
 			{

@@ -2,9 +2,9 @@ import Story from "../models/story.model.js";
 import User from "../models/user.model.js";
 import { v2 as cloudinary } from "cloudinary";
 
-const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB limit strictly enforced
+const MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024; // 8MB limit strictly enforced
 
-// Create a story (photo or video up to 5MB, 15s max, optional music)
+// Create a story (photo or video up to 8MB, 15s max, optional music)
 export const createStory = async (req, res) => {
   try {
     const userId = req.user?._id;
@@ -20,9 +20,9 @@ export const createStory = async (req, res) => {
       }
     }
 
-    // Enforce 5MB limit check
+    // Enforce 8MB limit check
     if (req.file && req.file.size > MAX_FILE_SIZE_BYTES) {
-      return res.status(400).json({ error: "File size exceeds 5MB limit. Please select a smaller file." });
+      return res.status(400).json({ error: "File size exceeds 8MB limit. Please select a smaller file." });
     }
 
     // Support multipart buffer or base64/url
@@ -44,7 +44,7 @@ export const createStory = async (req, res) => {
     } else if (req.body.media) {
       // Check approximate base64 size (base64 length * 0.75)
       if (typeof req.body.media === "string" && req.body.media.length * 0.75 > MAX_FILE_SIZE_BYTES + 500000) {
-        return res.status(400).json({ error: "File size exceeds 5MB limit. Please select a smaller file." });
+        return res.status(400).json({ error: "File size exceeds 8MB limit. Please select a smaller file." });
       }
       uploadRes = await cloudinary.uploader.upload(req.body.media, {
         resource_type: type === "video" ? "video" : "image",

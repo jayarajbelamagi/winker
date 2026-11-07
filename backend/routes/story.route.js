@@ -13,10 +13,10 @@ import multer from "multer";
 
 const router = express.Router();
 
-// Configure multer for memory storage up to 5MB strictly
+// Configure multer for memory storage up to 8MB strictly
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 8 * 1024 * 1024 }, // 8MB limit
 });
 
 router.post("/", protectRoute, upload.single("media"), createStory);

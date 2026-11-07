@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 import { v2 as cloudinary } from "cloudinary";
 import User from "../models/user.model.js";
+import Post from "../models/post.model.js";
 import Notification from "../models/notification.model.js";
 import ProfileView from "../models/profile_view.model.js";
 
@@ -47,8 +48,11 @@ export const getUserProfile = async (req, res) => {
 			).catch((err) => console.error("Error recording profile view:", err.message));
 		}
 
-		// If user is viewing their own profile, attach quick view stats
+		// Attach posts count and profile views stats
 		const userObj = user.toObject ? user.toObject() : { ...user };
+		const postsCount = await Post.countDocuments({ user: user._id });
+		userObj.postsCount = postsCount;
+
 		if (req.user && req.user._id.toString() === user._id.toString()) {
 			const viewCount = await ProfileView.countDocuments({ profileUser: user._id });
 			userObj.profileViewsCount = viewCount;

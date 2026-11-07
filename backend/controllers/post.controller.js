@@ -9,9 +9,9 @@ const getActivePostFilter = (extraConditions = {}) => ({
 	$or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
 });
 
-const MAX_MEDIA_BYTES = 5 * 1024 * 1024; // 5MB strict limit
+const MAX_MEDIA_BYTES = 8 * 1024 * 1024; // 8MB strict limit
 
-// CREATE POST (supports text, image, video up to 5MB, poll, quotedPost, 24h expiration)
+// CREATE POST (supports text, image, video up to 8MB, poll, quotedPost, 24h expiration)
 export const createPost = async (req, res) => {
 	try {
 		const { text, img: mediaBase64, mediaType = "image", poll, quotedPost, is24hStory } = req.body;
@@ -25,9 +25,9 @@ export const createPost = async (req, res) => {
 		let detectedMediaType = mediaType === "video" ? "video" : "image";
 
 		if (mediaBase64) {
-			// Enforce 5MB limit check on mediaBase64
+			// Enforce 8MB limit check on mediaBase64
 			if (typeof mediaBase64 === "string" && mediaBase64.length * 0.75 > MAX_MEDIA_BYTES + 500000) {
-				return res.status(400).json({ error: "Media file exceeds 5MB limit. Please choose a smaller file." });
+				return res.status(400).json({ error: "Media file exceeds 8MB limit. Please choose a smaller file." });
 			}
 
 			try {
@@ -55,7 +55,7 @@ export const createPost = async (req, res) => {
 				if (mediaBase64.startsWith("http")) {
 					img = mediaBase64;
 				} else {
-					return res.status(500).json({ error: "Failed to upload media. Please check format and size (max 5MB)." });
+					return res.status(500).json({ error: "Failed to upload media. Please check format and size (max 8MB)." });
 				}
 			}
 		}
