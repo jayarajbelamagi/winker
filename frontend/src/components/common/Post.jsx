@@ -1,18 +1,37 @@
-import { FaRegComment, FaRegHeart } from "react-icons/fa";
+import { FaRegComment, FaRegHeart, FaHeart } from "react-icons/fa";
 import { FaTrash } from "react-icons/fa";
-import { FiShare2 } from "react-icons/fi";
+import { FiShare2, FiImage, FiCornerDownRight } from "react-icons/fi";
 import { BsBookmark, BsBookmarkFill } from "react-icons/bs";
-import { useState, useEffect } from "react";
+import { MdOutlineGif } from "react-icons/md";
+import { IoCloseSharp } from "react-icons/io5";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 
 import LoadingSpinner from "./LoadingSpinner";
+import GifPicker from "./GifPicker";
+import SharePostModal from "./SharePostModal";
 import { formatPostDate } from "../../utils/date";
 import { apiFetch } from "../../lib/api";
+import { compressImage } from "../../utils/imageCompressor";
 
 const Post = ({ post }) => {
   const [comment, setComment] = useState("");
+  const [commentImg, setCommentImg] = useState(null);
+  const [showCommentGifPicker, setShowCommentGifPicker] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+
+  // Threaded reply states
+  const [replyingTo, setReplyingTo] = useState(null); // { commentId, username }
+  const [replyText, setReplyText] = useState("");
+  const [replyImg, setReplyImg] = useState(null);
+  const [showReplyGifPicker, setShowReplyGifPicker] = useState(false);
+  const [expandedReplies, setExpandedReplies] = useState({});
+
+  const commentImgRef = useRef(null);
+  const replyImgRef = useRef(null);
+
   const navigate = useNavigate();
   const { data: authUser } = useQuery({ queryKey: ["authUser"] });
   const queryClient = useQueryClient();
@@ -142,29 +161,78 @@ const Post = ({ post }) => {
     },
   });
 
-  // 💬 Comment on Post
+  // 💬 Comment on Post (supports text + image/GIF)
   const { mutate: commentPost, isPending: isCommenting } = useMutation({
     mutationFn: async () => {
       const res = await apiFetch(`/api/posts/comment/${post._id}`, {
         method: "POST",
-        body: JSON.stringify({ text: comment }),
+        body: JSON.stringify({ text: comment, img: commentImg }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Something went wrong");
+      if (!res.ok) throw new Error(data.error || "Failed to post comment");
       return data;
     },
     onSuccess: () => {
-      toast.success("Comment posted successfully");
+      toast.success("Comment posted!");
       setComment("");
+      setCommentImg(null);
+      setShowCommentGifPicker(false);
       queryClient.invalidateQueries({ queryKey: ["posts"] });
     },
     onError: (error) => toast.error(error.message),
   });
 
+  // 💬 Reply to a Comment
+  const { mutate: replyToCommentMutation, isPending: isReplying } = useMutation({
+    mutationFn: async ({ commentId }) => {
+      const res = await apiFetch(
+        `/api/posts/comment/${post._id}/reply/${commentId}`,
+        {
+          method: "POST",
+          body: JSON.stringify({ text: replyText, img: replyImg }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to post reply");
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("Reply posted!");
+      setReplyText("");
+      setReplyImg(null);
+      setReplyingTo(null);
+      setShowReplyGifPicker(false);
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  // ❤️ Like / Unlike Comment
+  const { mutate: likeCommentMutation } = useMutation({
+    mutationFn: async (commentId) => {
+      const res = await apiFetch(
+        `/api/posts/comment/${post._id}/like/${commentId}`,
+        { method: "POST" }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to like comment");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+    },
+  });
+
   const handleDeletePost = () => deletePost();
   const handlePostComment = (e) => {
     e.preventDefault();
-    if (!isCommenting && comment.trim()) commentPost();
+    if (!isCommenting && (comment.trim() || commentImg)) commentPost();
+  };
+  const handlePostReply = (e, commentId) => {
+    e.preventDefault();
+    if (!isReplying && (replyText.trim() || replyImg)) {
+      replyToCommentMutation({ commentId });
+    }
   };
   const handleLikePost = () => {
     if (!isLiking) likePost();
@@ -173,18 +241,8 @@ const Post = ({ post }) => {
     if (!isBookmarking) toggleBookmark();
   };
 
-  const handleSharePost = async () => {
-    const postUrl = `${window.location.origin}/post/${post._id}`;
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: "Check this post on Winker", url: postUrl });
-      } catch (err) {
-        console.log(err);
-      }
-    } else {
-      navigator.clipboard.writeText(postUrl);
-      toast.success("Post link copied to clipboard!");
-    }
+  const handleSharePost = () => {
+    setShowShareModal(true);
   };
 
   const handlePostClick = (e) => {
@@ -468,62 +526,378 @@ const Post = ({ post }) => {
           id={`comments_modal${post._id}`}
           className="modal border-none outline-none"
         >
-          <div className="modal-box rounded-xl border border-gray-700 bg-stone-900">
-            <h3 className="font-bold text-lg mb-4 text-white">Comments</h3>
-            <div className="flex flex-col gap-3 max-h-60 overflow-auto">
-              {(!post.comments || post.comments.length === 0) && (
-                <p className="text-sm text-slate-500 text-center py-4">
-                  No comments yet 🤔 Be the first to comment!
-                </p>
-              )}
-              {post.comments?.map((c) => (
-                <div key={c._id} className="flex gap-2 items-start py-1">
-                  <div className="avatar">
-                    <div className="w-8 rounded-full overflow-hidden">
-                      <img
-                        src={c.user?.profileImg || "/avatar-placeholder.png"}
-                        alt=""
-                        onError={(e) => {
-                          e.target.onerror = null;
-                          e.target.src = "/avatar-placeholder.png";
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-1">
-                      <span className="font-bold text-sm text-white">
-                        {c.user?.fullName}
-                      </span>
-                    </div>
-                    <div className="text-sm text-stone-300 mt-0.5">{c.text}</div>
-                  </div>
-                </div>
-              ))}
+          <div className="modal-box rounded-2xl border border-stone-800 bg-[#16181C] max-w-lg w-full max-h-[85vh] flex flex-col p-4 sm:p-5">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-800">
+              <h3 className="font-bold text-base sm:text-lg text-white">Comments</h3>
+              <form method="dialog">
+                <button className="p-1 rounded-full text-stone-400 hover:text-white hover:bg-stone-800 transition">
+                  <IoCloseSharp className="w-5 h-5" />
+                </button>
+              </form>
             </div>
 
+            {/* Comments List */}
+            <div className="flex-1 overflow-y-auto py-3 space-y-4">
+              {(!post.comments || post.comments.length === 0) && (
+                <p className="text-sm text-stone-500 text-center py-8">
+                  No comments yet 🤔 Be the first to start the conversation!
+                </p>
+              )}
+
+              {post.comments?.map((c) => {
+                const isCommentLiked = c.likes?.some(
+                  (id) => (id?._id || id)?.toString() === authUser?._id?.toString()
+                );
+                const hasReplies = c.replies && c.replies.length > 0;
+                const isExpanded = Boolean(expandedReplies[c._id]);
+                const isReplyingHere = replyingTo?.commentId === c._id;
+
+                return (
+                  <div key={c._id} className="flex flex-col gap-1.5">
+                    {/* Top Level Comment */}
+                    <div className="flex gap-2.5 items-start">
+                      <div className="avatar">
+                        <div className="w-8 h-8 rounded-full overflow-hidden border border-stone-700">
+                          <img
+                            src={c.user?.profileImg || "/avatar-placeholder.png"}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = "/avatar-placeholder.png";
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex-1 min-w-0 bg-stone-900/60 p-2.5 rounded-2xl border border-stone-800/80">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-white">
+                            {c.user?.fullName}
+                          </span>
+                          <span className="text-[10px] text-stone-500">
+                            {formatPostDate(c.createdAt)}
+                          </span>
+                        </div>
+
+                        {c.text && (
+                          <div className="text-xs sm:text-sm text-stone-200 mt-1 whitespace-pre-wrap break-words">
+                            {c.text}
+                          </div>
+                        )}
+
+                        {c.img && (
+                          <div className="mt-2 rounded-xl overflow-hidden max-h-48 border border-stone-800 max-w-xs">
+                            <img
+                              src={c.img}
+                              alt="Comment attachment"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+
+                        {/* Comment Action Links (Like, Reply) */}
+                        <div className="flex items-center gap-4 mt-2 pt-1 border-t border-stone-800/60 text-[11px] text-stone-400">
+                          <button
+                            type="button"
+                            onClick={() => likeCommentMutation(c._id)}
+                            className={`flex items-center gap-1 hover:text-pink-500 transition ${
+                              isCommentLiked ? "text-pink-500 font-semibold" : ""
+                            }`}
+                          >
+                            {isCommentLiked ? (
+                              <FaHeart className="w-3 h-3 text-pink-500" />
+                            ) : (
+                              <FaRegHeart className="w-3 h-3" />
+                            )}
+                            <span>{c.likes?.length || 0}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setReplyingTo(
+                                isReplyingHere
+                                  ? null
+                                  : { commentId: c._id, username: c.user?.fullName }
+                              )
+                            }
+                            className="flex items-center gap-1 hover:text-sky-400 transition"
+                          >
+                            <FiCornerDownRight className="w-3 h-3" />
+                            <span>Reply</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* View / Hide Replies Button */}
+                    {hasReplies && (
+                      <div className="ml-10">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedReplies((prev) => ({
+                              ...prev,
+                              [c._id]: !prev[c._id],
+                            }))
+                          }
+                          className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1.5"
+                        >
+                          <span className="inline-block w-4 border-b border-primary/50" />
+                          {isExpanded
+                            ? "Hide replies"
+                            : `View ${c.replies.length} ${
+                                c.replies.length === 1 ? "reply" : "replies"
+                              }`}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Nested Replies List */}
+                    {hasReplies && isExpanded && (
+                      <div className="ml-8 sm:ml-10 pl-3 border-l-2 border-stone-800 space-y-2 mt-1">
+                        {c.replies.map((r, rIdx) => (
+                          <div key={r._id || rIdx} className="flex gap-2 items-start">
+                            <img
+                              src={r.user?.profileImg || "/avatar-placeholder.png"}
+                              alt=""
+                              className="w-6 h-6 rounded-full object-cover border border-stone-700 mt-0.5"
+                            />
+                            <div className="flex-1 min-w-0 bg-stone-900/40 p-2 rounded-xl border border-stone-800/60">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-[11px] text-white">
+                                  {r.user?.fullName}
+                                </span>
+                                <span className="text-[9px] text-stone-500">
+                                  {formatPostDate(r.createdAt)}
+                                </span>
+                              </div>
+                              {r.text && (
+                                <p className="text-xs text-stone-300 mt-0.5 whitespace-pre-wrap break-words">
+                                  {r.text}
+                                </p>
+                              )}
+                              {r.img && (
+                                <div className="mt-1.5 rounded-lg overflow-hidden max-h-36 border border-stone-800 max-w-xs">
+                                  <img
+                                    src={r.img}
+                                    alt="Reply attachment"
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Inline Reply Form */}
+                    {isReplyingHere && (
+                      <form
+                        onSubmit={(e) => handlePostReply(e, c._id)}
+                        className="ml-8 sm:ml-10 mt-1 p-2 bg-stone-900 rounded-xl border border-primary/40 space-y-2"
+                      >
+                        <div className="flex items-center justify-between text-[11px] text-stone-400">
+                          <span>
+                            Replying to{" "}
+                            <span className="text-primary font-semibold">
+                              @{replyingTo.username}
+                            </span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReplyingTo(null);
+                              setReplyImg(null);
+                            }}
+                            className="text-stone-400 hover:text-white"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            placeholder="Write a reply..."
+                            value={replyText}
+                            onChange={(e) => setReplyText(e.target.value)}
+                            className="flex-1 bg-black text-xs text-white px-3 py-1.5 rounded-lg border border-stone-800 focus:outline-none focus:border-primary"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => replyImgRef.current?.click()}
+                            className="p-1.5 text-stone-400 hover:text-primary transition"
+                            title="Attach photo"
+                          >
+                            <FiImage className="w-4 h-4" />
+                          </button>
+                          <input
+                            type="file"
+                            ref={replyImgRef}
+                            hidden
+                            accept="image/*"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const compressed = await compressImage(file, 800, 0.7);
+                                setReplyImg(compressed);
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowReplyGifPicker(true)}
+                            className="p-1.5 text-stone-400 hover:text-primary transition"
+                            title="Attach GIF"
+                          >
+                            <MdOutlineGif className="w-5 h-5" />
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={isReplying || (!replyText.trim() && !replyImg)}
+                            className="btn btn-primary btn-xs text-white rounded-full px-3"
+                          >
+                            {isReplying ? <LoadingSpinner size="xs" /> : "Reply"}
+                          </button>
+                        </div>
+
+                        {replyImg && (
+                          <div className="relative inline-block mt-1">
+                            <img
+                              src={replyImg}
+                              alt=""
+                              className="h-14 rounded-lg object-cover border border-stone-700"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setReplyImg(null)}
+                              className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-0.5"
+                            >
+                              <IoCloseSharp className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+
+                        {showReplyGifPicker && (
+                          <div className="pt-1">
+                            <GifPicker
+                              onSelect={(gifUrl) => {
+                                setReplyImg(gifUrl);
+                                setShowReplyGifPicker(false);
+                              }}
+                              onClose={() => setShowReplyGifPicker(false)}
+                            />
+                          </div>
+                        )}
+                      </form>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Main Add Comment Form */}
             <form
               onSubmit={handlePostComment}
-              className="flex gap-2 items-center mt-4 border-t border-gray-600 pt-2"
+              className="border-t border-stone-800 pt-3 space-y-2"
             >
-              <textarea
-                className="textarea w-full p-1 rounded text-md resize-none border focus:outline-none border-gray-800 bg-black text-white"
-                placeholder="Add a comment..."
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-              />
-              <button
-                className="btn btn-primary rounded-full btn-sm text-white px-4"
-                disabled={isCommenting}
-              >
-                {isCommenting ? <LoadingSpinner size="md" /> : "Post"}
-              </button>
+              <div className="flex gap-2 items-center">
+                <textarea
+                  className="textarea w-full p-2 rounded-xl text-xs sm:text-sm resize-none border focus:outline-none border-stone-800 bg-black text-white"
+                  placeholder="Post your reply..."
+                  rows={2}
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                />
+              </div>
+
+              {commentImg && (
+                <div className="relative inline-block">
+                  <img
+                    src={commentImg}
+                    alt=""
+                    className="h-20 rounded-xl object-cover border border-stone-700"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCommentImg(null)}
+                    className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow-md"
+                  >
+                    <IoCloseSharp className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {showCommentGifPicker && (
+                <div className="pb-2">
+                  <GifPicker
+                    onSelect={(gifUrl) => {
+                      setCommentImg(gifUrl);
+                      setShowCommentGifPicker(false);
+                    }}
+                    onClose={() => setShowCommentGifPicker(false)}
+                  />
+                </div>
+              )}
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1 text-primary">
+                  <button
+                    type="button"
+                    onClick={() => commentImgRef.current?.click()}
+                    className="p-2 rounded-full hover:bg-stone-800 transition"
+                    title="Attach photo"
+                  >
+                    <FiImage className="w-5 h-5" />
+                  </button>
+                  <input
+                    type="file"
+                    ref={commentImgRef}
+                    hidden
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const compressed = await compressImage(file, 800, 0.7);
+                        setCommentImg(compressed);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCommentGifPicker((prev) => !prev)}
+                    className="p-2 rounded-full hover:bg-stone-800 transition"
+                    title="Add GIF"
+                  >
+                    <MdOutlineGif className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary rounded-full btn-sm text-white px-5"
+                  disabled={isCommenting || (!comment.trim() && !commentImg)}
+                >
+                  {isCommenting ? <LoadingSpinner size="sm" /> : "Post"}
+                </button>
+              </div>
             </form>
           </div>
           <form method="dialog" className="modal-backdrop">
             <button className="outline-none">close</button>
           </form>
         </dialog>
+
+        {/* Share Post to Chat / DMs Modal */}
+        <SharePostModal
+          isOpen={showShareModal}
+          onClose={() => setShowShareModal(false)}
+          post={post}
+          authUser={authUser}
+        />
       </div>
     </div>
   );

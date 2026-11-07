@@ -8,6 +8,7 @@ import NotificationPage from "./pages/notification/NotificationPage";
 import ProfilePage from "./pages/profile/ProfilePage";
 import ChatPage from "./pages/chat/ChatPage";
 import NewsPage from "./pages/news/NewsPage";
+import ExplorePage from "./pages/explore/ExplorePage";
 import BookmarksPage from "./pages/bookmarks/BookmarksPage";
 import ResetPasswordPage from "./pages/auth/reset/ResetPasswordPage";
 
@@ -152,8 +153,12 @@ function App() {
             element={authUser ? <CallsPage authUser={authUser} /> : <Navigate to="/login" />}
           />
           <Route
+            path="/explore"
+            element={authUser ? <ExplorePage /> : <Navigate to="/login" />}
+          />
+          <Route
             path="/news"
-            element={authUser ? <NewsPage /> : <Navigate to="/login" />}
+            element={authUser ? <ExplorePage /> : <Navigate to="/login" />}
           />
           <Route
             path="/bookmarks"

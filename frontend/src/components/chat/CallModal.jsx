@@ -6,8 +6,17 @@ import {
   IoMicOff,
   IoVideocamOff,
   IoCameraReverse,
+  IoChatbubblesOutline,
+  IoCloseSharp,
 } from "react-icons/io5";
-import { MdCallEnd } from "react-icons/md";
+import {
+  MdCallEnd,
+  MdScreenShare,
+  MdStopScreenShare,
+  MdBlurOn,
+  MdBlurOff,
+} from "react-icons/md";
+import { FiSend } from "react-icons/fi";
 import { toast } from "react-hot-toast";
 import { apiFetch } from "../../lib/api";
 
@@ -146,12 +155,23 @@ const CallModal = ({
   const [isPiPSwapped, setIsPiPSwapped] = useState(false);
   const [connectionHealth, setConnectionHealth] = useState("connecting"); // "connecting" | "live" | "reconnecting"
 
+  // Screen Sharing, Background Blur & In-Call Chat states
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [isBackgroundBlurred, setIsBackgroundBlurred] = useState(false);
+  const [showInCallChat, setShowInCallChat] = useState(false);
+  const [inCallMessages, setInCallMessages] = useState([]);
+  const [inCallInput, setInCallInput] = useState("");
+  const [unreadInCallCount, setUnreadInCallCount] = useState(0);
+
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
   const localStreamRef = useRef(null);
+  const screenStreamRef = useRef(null);
   const remoteMediaStreamRef = useRef(null);
   const pcRef = useRef(null);
+  const dataChannelRef = useRef(null);
+  const inCallMessagesEndRef = useRef(null);
   const ringbackAudioRef = useRef(null);
   const timerRef = useRef(null);
   const signalingPollRef = useRef(null);
@@ -193,6 +213,20 @@ const CallModal = ({
     if (remoteMediaStreamRef.current) {
       stopMediaStream(remoteMediaStreamRef.current);
       remoteMediaStreamRef.current = null;
+    }
+
+    // 3b. Stop screen sharing stream if active
+    if (screenStreamRef.current) {
+      stopMediaStream(screenStreamRef.current);
+      screenStreamRef.current = null;
+      setIsScreenSharing(false);
+    }
+
+    if (dataChannelRef.current) {
+      try {
+        dataChannelRef.current.close();
+      } catch (e) {}
+      dataChannelRef.current = null;
     }
 
     // 4. Detach from local video element and release hardware camera sink
@@ -314,6 +348,31 @@ const CallModal = ({
       localStream.getTracks().forEach((track) => {
         pc.addTrack(track, localStream);
       });
+
+      // Setup WebRTC DataChannel for instant in-call peer text chat
+      const setupChannelEvents = (channel) => {
+        channel.onmessage = (event) => {
+          if (!isMounted) return;
+          try {
+            const data = JSON.parse(event.data);
+            setInCallMessages((prev) => [...prev, { ...data, isMine: false }]);
+            setUnreadInCallCount((prev) => prev + 1);
+          } catch (e) {}
+        };
+      };
+
+      if (isCaller) {
+        try {
+          const dc = pc.createDataChannel("winker_incall_chat");
+          setupChannelEvents(dc);
+          dataChannelRef.current = dc;
+        } catch (e) {}
+      } else {
+        pc.ondatachannel = (event) => {
+          setupChannelEvents(event.channel);
+          dataChannelRef.current = event.channel;
+        };
+      }
 
       // Trickle ICE candidate event with immediate delivery
       pc.onicecandidate = (event) => {
@@ -640,6 +699,99 @@ const CallModal = ({
     }
   };
 
+  // Screen Sharing
+  const startScreenShare = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        toast.error("Screen sharing is not supported on this browser.");
+        return;
+      }
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: "always" },
+        audio: false,
+      });
+      const screenTrack = stream.getVideoTracks()[0];
+      if (!screenTrack) return;
+
+      screenStreamRef.current = stream;
+      setIsScreenSharing(true);
+      toast.success("Screen sharing active");
+
+      if (pcRef.current) {
+        const sender = pcRef.current.getSenders().find((s) => s.track && s.track.kind === "video");
+        if (sender) {
+          await sender.replaceTrack(screenTrack);
+        }
+      }
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+        localVideoRef.current.play().catch(() => {});
+      }
+
+      screenTrack.onended = () => {
+        stopScreenShare();
+      };
+    } catch (err) {
+      if (err.name !== "NotAllowedError") {
+        console.error("Screen share error:", err);
+        toast.error("Failed to start screen share");
+      }
+    }
+  };
+
+  const stopScreenShare = async () => {
+    if (screenStreamRef.current) {
+      stopMediaStream(screenStreamRef.current);
+      screenStreamRef.current = null;
+    }
+    setIsScreenSharing(false);
+
+    // Restore camera track
+    if (localStreamRef.current && pcRef.current) {
+      const cameraTrack = localStreamRef.current.getVideoTracks()[0];
+      if (cameraTrack) {
+        const sender = pcRef.current.getSenders().find((s) => s.track && s.track.kind === "video");
+        if (sender) {
+          await sender.replaceTrack(cameraTrack);
+        }
+      }
+    }
+
+    if (localVideoRef.current && localStreamRef.current) {
+      localVideoRef.current.srcObject = localStreamRef.current;
+      localVideoRef.current.play().catch(() => {});
+    }
+  };
+
+  // Send In-Call text message
+  const handleSendInCallMessage = (e) => {
+    e?.preventDefault();
+    if (!inCallInput.trim()) return;
+
+    const msgObj = {
+      id: Date.now(),
+      senderName: isCaller ? "You" : partner?.fullName || "Me",
+      text: inCallInput.trim(),
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
+
+    if (dataChannelRef.current && dataChannelRef.current.readyState === "open") {
+      try {
+        dataChannelRef.current.send(JSON.stringify(msgObj));
+      } catch (err) {
+        console.warn("DataChannel send failed:", err);
+      }
+    }
+
+    setInCallMessages((prev) => [...prev, { ...msgObj, isMine: true }]);
+    setInCallInput("");
+
+    setTimeout(() => {
+      inCallMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 50);
+  };
+
   const handleEndCallClick = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (ringbackAudioRef.current) ringbackAudioRef.current();
@@ -694,13 +846,18 @@ const CallModal = ({
               title={isPiPSwapped ? "Tap to maximize remote video" : ""}
             />
 
-            {/* Local User Video Stream - Dedicated DOM element with scale-x mirror */}
+            {/* Local User Video Stream - Dedicated DOM element with scale-x mirror (unless screen sharing) */}
             <video
               ref={localVideoRef}
               autoPlay
               playsInline
               muted
-              className={`object-cover transition-all duration-300 scale-x-[-1] ${
+              style={{
+                filter: isBackgroundBlurred && !isScreenSharing ? "blur(8px) contrast(1.08)" : "none",
+              }}
+              className={`object-cover transition-all duration-300 ${
+                isScreenSharing ? "" : "scale-x-[-1]"
+              } ${
                 isPiPSwapped
                   ? "absolute inset-0 w-full h-full z-0"
                   : "absolute top-20 right-4 z-30 w-28 h-40 sm:w-32 sm:h-44 rounded-2xl overflow-hidden border-2 border-stone-700/80 bg-stone-900 shadow-2xl cursor-pointer hover:scale-105 active:scale-95"
@@ -847,29 +1004,100 @@ const CallModal = ({
           </div>
         </div>
 
+        {/* ================= IN-CALL CHAT DRAWER ================= */}
+        {showInCallChat && (
+          <div className="absolute inset-x-3 bottom-24 top-24 sm:top-28 z-40 bg-[#16181C]/95 backdrop-blur-2xl rounded-2xl border border-stone-800 shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4">
+            {/* Drawer Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-stone-800 bg-stone-900/80">
+              <div className="flex items-center gap-2">
+                <IoChatbubblesOutline className="text-primary w-4 h-4" />
+                <span className="font-bold text-xs text-white">In-Call Messages</span>
+              </div>
+              <button
+                onClick={() => setShowInCallChat(false)}
+                className="p-1 rounded-full text-stone-400 hover:text-white hover:bg-stone-800 transition"
+              >
+                <IoCloseSharp className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Message History */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+              {inCallMessages.length === 0 ? (
+                <div className="text-center py-12 text-stone-500 text-xs">
+                  No messages yet. Send notes or links during your call!
+                </div>
+              ) : (
+                inCallMessages.map((m) => (
+                  <div
+                    key={m.id}
+                    className={`flex flex-col ${m.isMine ? "items-end" : "items-start"}`}
+                  >
+                    <span className="text-[10px] text-stone-500 mb-0.5">
+                      {m.isMine ? "You" : m.senderName} · {m.time}
+                    </span>
+                    <div
+                      className={`px-3 py-1.5 rounded-2xl text-xs max-w-[85%] whitespace-pre-wrap break-words ${
+                        m.isMine
+                          ? "bg-primary text-white rounded-tr-sm"
+                          : "bg-stone-800 text-stone-100 rounded-tl-sm border border-stone-700"
+                      }`}
+                    >
+                      {m.text}
+                    </div>
+                  </div>
+                ))
+              )}
+              <div ref={inCallMessagesEndRef} />
+            </div>
+
+            {/* Message Input Form */}
+            <form
+              onSubmit={handleSendInCallMessage}
+              className="p-2 border-t border-stone-800 bg-stone-900/80 flex items-center gap-2"
+            >
+              <input
+                type="text"
+                placeholder="Type a message..."
+                value={inCallInput}
+                onChange={(e) => setInCallInput(e.target.value)}
+                autoFocus
+                className="flex-1 bg-black text-xs text-white px-3 py-2 rounded-full border border-stone-800 focus:outline-none focus:border-primary placeholder-stone-500"
+              />
+              <button
+                type="submit"
+                disabled={!inCallInput.trim()}
+                className="p-2 rounded-full bg-primary hover:bg-primary/90 text-white transition disabled:opacity-50"
+              >
+                <FiSend className="w-3.5 h-3.5" />
+              </button>
+            </form>
+          </div>
+        )}
+
         {/* ================= BOTTOM IN-CALL CONTROLS ================= */}
-        <div className="relative z-20 flex items-center justify-around bg-black/70 backdrop-blur-xl rounded-2xl py-4 px-6 border border-stone-800 mx-4 mb-5 shadow-2xl">
+        <div className="relative z-20 flex items-center justify-around bg-black/70 backdrop-blur-xl rounded-2xl py-3 px-3 sm:px-6 border border-stone-800 mx-3 sm:mx-4 mb-4 shadow-2xl gap-1.5 sm:gap-2">
           {/* Mute Mic Button */}
           <button
             onClick={toggleMute}
-            className={`p-3.5 rounded-full transition active:scale-95 ${
+            className={`p-3 rounded-full transition active:scale-95 ${
               isMuted
                 ? "bg-red-500/25 text-red-400 border border-red-500/40"
                 : "bg-stone-800 text-white hover:bg-stone-700"
             }`}
             title={isMuted ? "Unmute mic" : "Mute mic"}
           >
-            {isMuted ? <IoMicOff className="w-6 h-6" /> : <IoMic className="w-6 h-6" />}
+            {isMuted ? <IoMicOff className="w-5 h-5 sm:w-6 sm:h-6" /> : <IoMic className="w-5 h-5 sm:w-6 sm:h-6" />}
           </button>
 
           {/* Flip Camera Button (Video only) */}
           {callType === "video" ? (
             <button
               onClick={flipCamera}
-              className="p-3.5 rounded-full bg-stone-800 text-white hover:bg-stone-700 transition active:scale-95"
+              className="p-3 rounded-full bg-stone-800 text-white hover:bg-stone-700 transition active:scale-95"
               title="Flip Camera (Front/Rear)"
             >
-              <IoCameraReverse className="w-6 h-6" />
+              <IoCameraReverse className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
           ) : null}
 
@@ -877,24 +1105,83 @@ const CallModal = ({
           {callType === "video" ? (
             <button
               onClick={toggleVideo}
-              className={`p-3.5 rounded-full transition active:scale-95 ${
+              className={`p-3 rounded-full transition active:scale-95 ${
                 !isVideoOn
                   ? "bg-red-500/25 text-red-400 border border-red-500/40"
                   : "bg-stone-800 text-white hover:bg-stone-700"
               }`}
               title={isVideoOn ? "Turn camera off" : "Turn camera on"}
             >
-              {isVideoOn ? <IoVideocam className="w-6 h-6" /> : <IoVideocamOff className="w-6 h-6" />}
+              {isVideoOn ? <IoVideocam className="w-5 h-5 sm:w-6 sm:h-6" /> : <IoVideocamOff className="w-5 h-5 sm:w-6 sm:h-6" />}
             </button>
           ) : null}
+
+          {/* Screen Share Button (Video only) */}
+          {callType === "video" ? (
+            <button
+              onClick={isScreenSharing ? stopScreenShare : startScreenShare}
+              className={`p-3 rounded-full transition active:scale-95 ${
+                isScreenSharing
+                  ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/40"
+                  : "bg-stone-800 text-white hover:bg-stone-700"
+              }`}
+              title={isScreenSharing ? "Stop sharing screen" : "Share screen"}
+            >
+              {isScreenSharing ? (
+                <MdStopScreenShare className="w-5 h-5 sm:w-6 sm:h-6" />
+              ) : (
+                <MdScreenShare className="w-5 h-5 sm:w-6 sm:h-6" />
+              )}
+            </button>
+          ) : null}
+
+          {/* Background Blur Button (Video only) */}
+          {callType === "video" ? (
+            <button
+              onClick={() => setIsBackgroundBlurred((prev) => !prev)}
+              className={`p-3 rounded-full transition active:scale-95 ${
+                isBackgroundBlurred
+                  ? "bg-primary/25 text-primary border border-primary/40"
+                  : "bg-stone-800 text-white hover:bg-stone-700"
+              }`}
+              title={isBackgroundBlurred ? "Disable background blur" : "Enable background blur"}
+            >
+              {isBackgroundBlurred ? (
+                <MdBlurOff className="w-5 h-5 sm:w-6 sm:h-6" />
+              ) : (
+                <MdBlurOn className="w-5 h-5 sm:w-6 sm:h-6" />
+              )}
+            </button>
+          ) : null}
+
+          {/* In-Call Chat Button */}
+          <button
+            onClick={() => {
+              setShowInCallChat((prev) => !prev);
+              setUnreadInCallCount(0);
+            }}
+            className={`relative p-3 rounded-full transition active:scale-95 ${
+              showInCallChat
+                ? "bg-primary text-white"
+                : "bg-stone-800 text-white hover:bg-stone-700"
+            }`}
+            title="In-call chat"
+          >
+            <IoChatbubblesOutline className="w-5 h-5 sm:w-6 sm:h-6" />
+            {unreadInCallCount > 0 && !showInCallChat && (
+              <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center animate-bounce">
+                {unreadInCallCount}
+              </span>
+            )}
+          </button>
 
           {/* End Call Button (Big Red) */}
           <button
             onClick={handleEndCallClick}
-            className="p-4 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-xl shadow-red-600/40 active:scale-90 transition transform hover:scale-105"
+            className="p-3.5 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-xl shadow-red-600/40 active:scale-90 transition transform hover:scale-105"
             title="End Call"
           >
-            <MdCallEnd className="w-7 h-7" />
+            <MdCallEnd className="w-6 h-6 sm:w-7 sm:h-7" />
           </button>
         </div>
       </div>

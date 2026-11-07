@@ -189,13 +189,14 @@ export const sendMessage = async (req, res) => {
 			mediaType,
 			isViewOnce = false,
 			callInfo,
+			sharedPost,
 		} = req.body;
 
 		if (senderId.toString() === receiverId.toString()) {
 			return res.status(400).json({ error: "You cannot message yourself" });
 		}
 
-		if (!text?.trim() && !imgBase64 && !audioBase64 && !callInfo) {
+		if (!text?.trim() && !imgBase64 && !audioBase64 && !callInfo && !sharedPost) {
 			return res.status(400).json({ error: "Message text or attachment required" });
 		}
 
@@ -277,12 +278,15 @@ export const sendMessage = async (req, res) => {
 				text?.trim() ||
 				(callInfo
 					? `${callInfo.callType === "video" ? "📹 Video call" : "📞 Voice call"} (${callInfo.status || "ended"})`
+					: sharedPost
+					? "Shared a post"
 					: ""),
 			img: imgUrl,
 			audio: audioUrl,
 			audioDuration: Number(audioDuration) || 0,
 			mediaType: detectedMediaType,
 			isViewOnce: Boolean(isViewOnce),
+			sharedPost: sharedPost || null,
 			status: "delivered",
 			callInfo: callInfo || undefined,
 			seen: false,
@@ -365,11 +369,15 @@ export const getMessages = async (req, res) => {
 			}
 		}
 
-		// Re-fetch with updated flags and populated reactions
+		// Re-fetch with updated flags and populated reactions & shared post
 		const updatedMessages = await Message.find({
 			_id: { $in: conversation.messages },
 		})
 			.populate("reactions.user", "fullName username profileImg")
+			.populate({
+				path: "sharedPost",
+				populate: { path: "user", select: "fullName username profileImg" },
+			})
 			.sort({ createdAt: 1 });
 
 		res.status(200).json(updatedMessages);
@@ -1054,6 +1062,10 @@ export const getGroupMessages = async (req, res) => {
 					path: "reactions.user",
 					select: "fullName username profileImg",
 				},
+				{
+					path: "sharedPost",
+					populate: { path: "user", select: "fullName username profileImg" },
+				},
 			],
 		});
 
@@ -1081,6 +1093,7 @@ export const sendGroupMessage = async (req, res) => {
 			mediaType,
 			isViewOnce = false,
 			callInfo,
+			sharedPost,
 		} = req.body;
 
 		const conversation = await Conversation.findOne({
@@ -1141,12 +1154,15 @@ export const sendGroupMessage = async (req, res) => {
 				text?.trim() ||
 				(callInfo
 					? `${callInfo.callType === "video" ? "📹 Group video call" : "📞 Group voice call"}`
+					: sharedPost
+					? "Shared a post"
 					: ""),
 			img: imgUrl,
 			audio: audioUrl,
 			audioDuration: Number(audioDuration) || 0,
 			mediaType: detectedMediaType,
 			isViewOnce: Boolean(isViewOnce),
+			sharedPost: sharedPost || null,
 			status: "delivered",
 			callInfo: callInfo || undefined,
 			seen: false,
@@ -1175,7 +1191,11 @@ export const sendGroupMessage = async (req, res) => {
 
 		const populatedMsg = await Message.findById(newMessage._id)
 			.populate("senderId", "fullName username profileImg")
-			.populate("reactions.user", "fullName username profileImg");
+			.populate("reactions.user", "fullName username profileImg")
+			.populate({
+				path: "sharedPost",
+				populate: { path: "user", select: "fullName username profileImg" },
+			});
 
 		res.status(201).json(populatedMsg);
 	} catch (error) {
@@ -1515,5 +1535,106 @@ export const toggleStarMessage = async (req, res) => {
 	} catch (error) {
 		console.error("Error in toggleStarMessage:", error);
 		res.status(500).json({ error: "Failed to star message" });
+	}
+};
+
+// GET CONVERSATION SHARED MEDIA, AUDIO, LINKS & STARRED
+export const getConversationMedia = async (req, res) => {
+	try {
+		const { conversationId } = req.params;
+		const userId = req.user._id;
+
+		const conversation = await Conversation.findOne({
+			_id: conversationId,
+			participants: userId,
+		});
+
+		if (!conversation) {
+			return res.status(404).json({ error: "Conversation not found" });
+		}
+
+		const messages = await Message.find({ _id: { $in: conversation.messages } })
+			.populate("senderId", "fullName username profileImg")
+			.sort({ createdAt: -1 });
+
+		const urlRegex = /(https?:\/\/[^\s]+)/g;
+
+		const media = [];
+		const audio = [];
+		const links = [];
+		const starred = [];
+
+		messages.forEach((msg) => {
+			if (msg.img && !msg.isViewOnce) {
+				media.push({
+					_id: msg._id,
+					url: msg.img,
+					mediaType: msg.mediaType || "image",
+					sender: msg.senderId,
+					createdAt: msg.createdAt,
+				});
+			}
+
+			if (msg.audio) {
+				audio.push({
+					_id: msg._id,
+					url: msg.audio,
+					duration: msg.audioDuration || 0,
+					sender: msg.senderId,
+					createdAt: msg.createdAt,
+				});
+			}
+
+			if (msg.text) {
+				const matchedUrls = msg.text.match(urlRegex);
+				if (matchedUrls) {
+					matchedUrls.forEach((url) => {
+						links.push({
+							_id: msg._id,
+							url,
+							text: msg.text,
+							sender: msg.senderId,
+							createdAt: msg.createdAt,
+						});
+					});
+				}
+			}
+
+			if (msg.starredBy && msg.starredBy.some((id) => id.toString() === userId.toString())) {
+				starred.push(msg);
+			}
+		});
+
+		res.status(200).json({ media, audio, links, starred });
+	} catch (error) {
+		console.error("Error in getConversationMedia:", error);
+		res.status(500).json({ error: "Failed to load conversation media" });
+	}
+};
+
+// UPDATE CONVERSATION WALLPAPER
+export const updateConversationWallpaper = async (req, res) => {
+	try {
+		const { conversationId } = req.params;
+		const { wallpaper } = req.body;
+		const userId = req.user._id;
+
+		const conversation = await Conversation.findOne({
+			_id: conversationId,
+			participants: userId,
+		});
+
+		if (!conversation) {
+			return res.status(404).json({ error: "Conversation not found" });
+		}
+
+		if (!conversation.wallpapers) conversation.wallpapers = new Map();
+		conversation.wallpapers.set(userId.toString(), wallpaper || "");
+		await conversation.save();
+
+		res.status(200).json({ success: true, wallpaper });
+	} catch (error) {
+		console.error("Error in updateConversationWallpaper:", error);
+		res.status(500).json({ error: "Failed to update wallpaper" });
 	}
 };

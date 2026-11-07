@@ -8,6 +8,7 @@ import {
 	IoCallOutline,
 	IoNewspaperOutline,
 	IoEyeOutline,
+	IoCompassOutline,
 } from "react-icons/io5";
 import { FaUser } from "react-icons/fa";
 import { AiOutlineRobot } from "react-icons/ai";
@@ -87,14 +88,14 @@ const Sidebar = () => {
 						</Link>
 					</li>
 
-					{/* 2. News (Trending) */}
+					{/* 2. Explore & Trending */}
 					<li className='flex justify-center md:justify-start'>
 						<Link
-							to='/news'
+							to='/explore'
 							className='flex gap-3.5 items-center hover:bg-stone-900 transition-all rounded-full duration-200 py-2.5 px-3 max-w-fit cursor-pointer group text-stone-200 hover:text-white'
 						>
-							<IoNewspaperOutline className='w-6 h-6 text-primary group-hover:scale-110 transition' />
-							<span className='text-base hidden md:block font-medium'>News</span>
+							<IoCompassOutline className='w-6 h-6 text-primary group-hover:scale-110 transition' />
+							<span className='text-base hidden md:block font-medium'>Explore</span>
 						</Link>
 					</li>
 

@@ -15,9 +15,15 @@ import {
 	bookmarkPost,
 	getBookmarkedPosts,
 	getPostById,
+	getTrendingHashtags,
+	exploreSearch,
 } from "../controllers/post.controller.js";
 
 const router = express.Router();
+
+// TRENDING & EXPLORE SEARCH (Must precede /:id)
+router.get("/trending/hashtags", protectRoute, getTrendingHashtags);
+router.get("/explore/search", protectRoute, exploreSearch);
 
 // FEED
 router.get("/all", protectRoute, getAllPosts);              // For You

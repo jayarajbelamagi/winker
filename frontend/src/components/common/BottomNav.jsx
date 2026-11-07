@@ -9,6 +9,8 @@ import {
   IoMailOutline,
   IoCall,
   IoCallOutline,
+  IoCompass,
+  IoCompassOutline,
 } from "react-icons/io5";
 import { AiOutlineRobot, AiFillRobot } from "react-icons/ai";
 
@@ -17,7 +19,7 @@ const BottomNav = ({ authUser }) => {
   const pathname = location.pathname;
 
   const isHome = pathname === "/";
-  const isNews = pathname === "/news";
+  const isExplore = pathname.startsWith("/explore") || pathname.startsWith("/news");
   const isNotifications = pathname === "/notifications";
   const isMessages = pathname.startsWith("/messages");
   const isCalls = pathname.startsWith("/calls");
@@ -64,16 +66,16 @@ const BottomNav = ({ authUser }) => {
         )}
       </Link>
 
-      {/* News (India Trending) */}
+      {/* Explore & News */}
       <Link
-        to="/news"
+        to="/explore"
         className="flex flex-col items-center justify-center p-2 text-white hover:text-primary transition"
-        title="News"
+        title="Explore"
       >
-        {isNews ? (
-          <IoNewspaper className="w-6 h-6 text-primary" />
+        {isExplore ? (
+          <IoCompass className="w-6 h-6 text-primary" />
         ) : (
-          <IoNewspaperOutline className="w-6 h-6 text-stone-400" />
+          <IoCompassOutline className="w-6 h-6 text-stone-400" />
         )}
       </Link>
 

@@ -16,6 +16,20 @@ const TRENDING_TOPICS = [
 ];
 
 const RightPanel = () => {
+	// Live Trending Hashtags Query
+	const { data: liveTrending } = useQuery({
+		queryKey: ["trendingHashtags"],
+		queryFn: async () => {
+			const res = await apiFetch("/api/posts/trending/hashtags");
+			const json = await res.json();
+			if (!res.ok) return TRENDING_TOPICS;
+			return Array.isArray(json) && json.length > 0 ? json : TRENDING_TOPICS;
+		},
+		staleTime: 60 * 1000,
+	});
+
+	const trendingList = liveTrending || TRENDING_TOPICS;
+
 	const { data: suggestedUsers, isLoading } = useQuery({
 		queryKey: ["suggestedUsers"],
 		queryFn: async () => {
@@ -43,14 +57,14 @@ const RightPanel = () => {
 					<h3 className='font-bold text-base text-white'>What's Happening</h3>
 				</div>
 				<div className='flex flex-col divide-y divide-stone-800/60'>
-					{TRENDING_TOPICS.map((topic, i) => (
+					{trendingList.slice(0, 5).map((topic, i) => (
 						<Link
 							key={i}
-							to='/news'
+							to={`/explore?q=${encodeURIComponent(topic.tag)}`}
 							className='py-2.5 hover:bg-stone-900/60 transition rounded-lg px-2 group block'
 						>
 							<div className='text-[11px] text-stone-500 font-medium'>
-								{topic.category}
+								{topic.category || "Trending on Winker"}
 							</div>
 							<div className='text-sm font-bold text-stone-100 group-hover:text-primary transition'>
 								{topic.tag}

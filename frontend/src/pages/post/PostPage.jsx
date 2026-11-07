@@ -16,6 +16,7 @@ import { IoCloseSharp } from "react-icons/io5";
 
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import EmojiPicker from "../../components/common/EmojiPicker";
+import SharePostModal from "../../components/common/SharePostModal";
 import { formatPostDate } from "../../utils/date";
 import { apiFetch } from "../../lib/api";
 
@@ -26,6 +27,7 @@ const PostPage = ({ authUser }) => {
 
   const [commentText, setCommentText] = useState("");
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [replyingToCommentId, setReplyingToCommentId] = useState(null);
   const [replyText, setReplyText] = useState("");
   const replyInputRef = useRef(null);
@@ -396,9 +398,9 @@ const PostPage = ({ authUser }) => {
 
           {/* Share Button */}
           <button
-            onClick={handleShare}
+            onClick={() => setShowShareModal(true)}
             className="flex items-center gap-2 hover:text-sky-400 transition"
-            title="Share"
+            title="Share Post to Friends or Copy Link"
           >
             <FiShare2 className="w-5 h-5" />
           </button>
@@ -642,6 +644,14 @@ const PostPage = ({ authUser }) => {
           })
         )}
       </section>
+
+      {/* Share Post Modal */}
+      <SharePostModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        post={post}
+        authUser={authUser}
+      />
     </div>
   );
 };

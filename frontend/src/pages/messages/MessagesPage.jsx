@@ -17,9 +17,12 @@ import {
   FiUsers,
   FiMic,
   FiStar,
+  FiFolder,
+  FiChevronUp,
+  FiChevronDown,
 } from "react-icons/fi";
 import { FaArrowLeft, FaRegSmile, FaThumbtack, FaStar } from "react-icons/fa";
-import { IoCloseSharp, IoStopCircle } from "react-icons/io5";
+import { IoCloseSharp, IoStopCircle, IoColorPaletteOutline } from "react-icons/io5";
 import { RiChatNewFill } from "react-icons/ri";
 import { HiUserGroup } from "react-icons/hi2";
 import { BsEyeFill } from "react-icons/bs";
@@ -30,6 +33,8 @@ import CreateGroupModal from "../../components/chat/CreateGroupModal";
 import GroupInfoModal from "../../components/chat/GroupInfoModal";
 import VoiceNotePlayer from "../../components/chat/VoiceNotePlayer";
 import ViewOnceModal from "../../components/chat/ViewOnceModal";
+import ChatMediaGalleryModal from "../../components/chat/ChatMediaGalleryModal";
+import ChatWallpaperModal, { WALLPAPER_PRESETS } from "../../components/chat/ChatWallpaperModal";
 import { useCall } from "../../context/CallContext";
 
 const QUICK_REACTIONS = ["❤️", "😂", "👍", "🔥", "😮", "😢"];
@@ -83,6 +88,13 @@ const MessagesPage = ({ authUser }) => {
   const [showGroupInfoModal, setShowGroupInfoModal] = useState(false);
   const [searchFilter, setSearchFilter] = useState("");
 
+  // In-Chat Message Search & Gallery states
+  const [showInChatSearch, setShowInChatSearch] = useState(false);
+  const [inChatSearchQuery, setInChatSearchQuery] = useState("");
+  const [showMediaGalleryModal, setShowMediaGalleryModal] = useState(false);
+  const [showWallpaperModal, setShowWallpaperModal] = useState(false);
+  const [chatWallpaper, setChatWallpaper] = useState("default");
+
   // Reaction popover message ID
   const [activeReactionMsgId, setActiveReactionMsgId] = useState(null);
 
@@ -118,6 +130,14 @@ const MessagesPage = ({ authUser }) => {
     (c) => !c.isGroup && c.otherUser?._id === activePartner?._id
   );
   const activeStreak = activeConversation?.streak;
+  const currentConversationId = activeGroup?._id || activeConversation?._id;
+
+  useEffect(() => {
+    if (currentConversationId) {
+      const saved = localStorage.getItem(`winker_wallpaper_${currentConversationId}`);
+      setChatWallpaper(saved || "default");
+    }
+  }, [currentConversationId]);
 
   // 2. Fetch Eligible Contacts (Mutuals)
   const { data: contactsData } = useQuery({
@@ -811,36 +831,107 @@ const MessagesPage = ({ authUser }) => {
                 )}
               </div>
 
-              {/* Call Buttons */}
-              <div className="flex items-center gap-1 sm:gap-2">
+              {/* Top Bar Actions: Call, Video, In-Chat Search, Gallery, Wallpaper */}
+              <div className="flex items-center gap-1 sm:gap-1.5">
+                <button
+                  onClick={() => setShowInChatSearch((prev) => !prev)}
+                  className={`p-2 rounded-full transition active:scale-95 ${
+                    showInChatSearch
+                      ? "bg-primary/20 text-primary"
+                      : "text-stone-300 hover:text-white hover:bg-stone-800"
+                  }`}
+                  title="Search Messages in this chat"
+                >
+                  <FiSearch className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={() => setShowMediaGalleryModal(true)}
+                  className="p-2 rounded-full text-stone-300 hover:text-white hover:bg-stone-800 transition active:scale-95"
+                  title="Chat Media, Audio, Links & Starred"
+                >
+                  <FiFolder className="w-4 h-4 text-amber-400" />
+                </button>
+
+                <button
+                  onClick={() => setShowWallpaperModal(true)}
+                  className="p-2 rounded-full text-stone-300 hover:text-white hover:bg-stone-800 transition active:scale-95"
+                  title="Change Chat Wallpaper"
+                >
+                  <IoColorPaletteOutline className="w-4 h-4 text-purple-400" />
+                </button>
+
                 <button
                   onClick={() => startCall("audio")}
-                  className="p-2.5 rounded-full text-stone-300 hover:text-white hover:bg-stone-800 transition active:scale-95"
+                  className="p-2 rounded-full text-stone-300 hover:text-white hover:bg-stone-800 transition active:scale-95"
                   title="Voice Call"
                 >
-                  <FiPhone className="w-5 h-5 text-emerald-400" />
+                  <FiPhone className="w-4 h-4 text-emerald-400" />
                 </button>
+
                 <button
                   onClick={() => startCall("video")}
-                  className="p-2.5 rounded-full text-stone-300 hover:text-white hover:bg-stone-800 transition active:scale-95"
+                  className="p-2 rounded-full text-stone-300 hover:text-white hover:bg-stone-800 transition active:scale-95"
                   title="Video Call"
                 >
-                  <FiVideo className="w-5 h-5 text-sky-400" />
+                  <FiVideo className="w-4 h-4 text-sky-400" />
                 </button>
+
                 {activeGroup && (
                   <button
                     onClick={() => setShowGroupInfoModal(true)}
-                    className="p-2.5 rounded-full text-stone-300 hover:text-white hover:bg-stone-800 transition active:scale-95"
+                    className="p-2 rounded-full text-stone-300 hover:text-white hover:bg-stone-800 transition active:scale-95"
                     title="Group Settings"
                   >
-                    <FiUsers className="w-5 h-5 text-stone-300" />
+                    <FiUsers className="w-4 h-4 text-stone-300" />
                   </button>
                 )}
               </div>
             </div>
 
-            {/* Messages Stream */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3.5 scroll-smooth">
+            {/* In-Chat Message Search Bar */}
+            {showInChatSearch && (
+              <div className="px-4 py-2.5 bg-[#16181C] border-b border-stone-800 flex items-center justify-between gap-3 animate-in slide-in-from-top-2">
+                <div className="relative flex-1">
+                  <FiSearch className="absolute left-3 top-2.5 text-stone-500 w-3.5 h-3.5" />
+                  <input
+                    type="text"
+                    placeholder="Search in this conversation..."
+                    value={inChatSearchQuery}
+                    onChange={(e) => setInChatSearchQuery(e.target.value)}
+                    autoFocus
+                    className="w-full pl-9 pr-8 py-1.5 bg-stone-900 border border-stone-800 rounded-full text-xs text-white focus:outline-none focus:border-primary placeholder-stone-500"
+                  />
+                  {inChatSearchQuery && (
+                    <button
+                      onClick={() => setInChatSearchQuery("")}
+                      className="absolute right-2.5 top-2 text-stone-400 hover:text-white"
+                    >
+                      <IoCloseSharp className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    setShowInChatSearch(false);
+                    setInChatSearchQuery("");
+                  }}
+                  className="text-xs text-stone-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {/* Messages Stream with Dynamic Wallpaper */}
+            <div
+              style={
+                WALLPAPER_PRESETS.find((p) => p.id === chatWallpaper)?.style || {
+                  backgroundColor: "#000000",
+                }
+              }
+              className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3.5 scroll-smooth transition-colors duration-300"
+            >
               <div className="max-w-4xl mx-auto w-full space-y-3.5 flex flex-col">
                 {isLoadingMessages ? (
                   <div className="flex justify-center py-12">
@@ -873,6 +964,11 @@ const MessagesPage = ({ authUser }) => {
                     );
                     const isOpenedByRecipient = Boolean(
                       msg.viewedBy && msg.viewedBy.length > 0
+                    );
+                    const isSearchMatch = Boolean(
+                      inChatSearchQuery &&
+                      (msg.text?.toLowerCase().includes(inChatSearchQuery.toLowerCase()) ||
+                       msg.sharedPost?.text?.toLowerCase().includes(inChatSearchQuery.toLowerCase()))
                     );
 
                     // Group System Message
@@ -927,6 +1023,8 @@ const MessagesPage = ({ authUser }) => {
                           {/* Message Bubble */}
                           <div
                             className={`relative max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-md ${
+                              isSearchMatch ? "ring-2 ring-amber-400 shadow-amber-400/20 " : ""
+                            }${
                               isMine
                                 ? "bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-tr-sm"
                                 : "bg-stone-900 border border-stone-800 text-stone-100 rounded-tl-sm"
@@ -1017,6 +1115,44 @@ const MessagesPage = ({ authUser }) => {
                             {/* Text content */}
                             {msg.text && (
                               <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                            )}
+
+                            {/* Rich Shared Post Embed Card */}
+                            {msg.sharedPost && (
+                              <div
+                                onClick={() => navigate(`/post/${msg.sharedPost._id}`)}
+                                className="my-2 p-2.5 rounded-xl bg-black/40 border border-white/20 hover:border-white/40 transition cursor-pointer max-w-sm"
+                              >
+                                <div className="flex items-center gap-2 mb-1.5">
+                                  <img
+                                    src={msg.sharedPost.user?.profileImg || "/avatar-placeholder.png"}
+                                    alt=""
+                                    className="w-6 h-6 rounded-full object-cover border border-white/20"
+                                  />
+                                  <div className="min-w-0">
+                                    <span className="text-xs font-bold text-white block truncate">
+                                      {msg.sharedPost.user?.fullName}
+                                    </span>
+                                  </div>
+                                </div>
+                                {msg.sharedPost.text && (
+                                  <p className="text-xs text-stone-200 line-clamp-2 whitespace-pre-wrap mb-1">
+                                    {msg.sharedPost.text}
+                                  </p>
+                                )}
+                                {msg.sharedPost.img && (
+                                  <div className="rounded-lg overflow-hidden max-h-36 border border-white/10">
+                                    <img
+                                      src={msg.sharedPost.img}
+                                      alt=""
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </div>
+                                )}
+                                <div className="text-[10px] text-sky-300 font-semibold mt-1 flex items-center gap-1">
+                                  <span>View Post ↗</span>
+                                </div>
+                              </div>
                             )}
 
                             {/* Reaction Badges on Bubble Corner */}
@@ -1494,6 +1630,27 @@ const MessagesPage = ({ authUser }) => {
           </div>
         </div>
       )}
+
+      {/* Chat Media Gallery Modal */}
+      <ChatMediaGalleryModal
+        isOpen={showMediaGalleryModal}
+        onClose={() => setShowMediaGalleryModal(false)}
+        conversationId={currentConversationId}
+        title={
+          activeGroup
+            ? `${activeGroup.groupName} - Gallery`
+            : `${activePartner?.fullName || "Chat"} - Gallery`
+        }
+      />
+
+      {/* Chat Wallpaper Selector Modal */}
+      <ChatWallpaperModal
+        isOpen={showWallpaperModal}
+        onClose={() => setShowWallpaperModal(false)}
+        conversationId={currentConversationId}
+        currentWallpaper={chatWallpaper}
+        onSelectWallpaper={(presetId) => setChatWallpaper(presetId)}
+      />
     </div>
   );
 };

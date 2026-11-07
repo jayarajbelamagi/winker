@@ -7,6 +7,7 @@ import {
   IoMailOutline,
   IoCallOutline,
   IoEyeOutline,
+  IoCompassOutline,
 } from "react-icons/io5";
 import { FaUser } from "react-icons/fa";
 import { BsBookmark } from "react-icons/bs";
@@ -171,12 +172,12 @@ const MobileDrawer = ({ authUser, isOpen, onClose }) => {
             </li>
             <li>
               <Link
-                to="/news"
+                to="/explore"
                 onClick={onClose}
                 className="flex items-center gap-4 p-3 rounded-xl hover:bg-stone-900 text-white font-medium text-base transition"
               >
-                <IoNewspaperOutline className="w-5 h-5 text-stone-400" />
-                <span>India News</span>
+                <IoCompassOutline className="w-5 h-5 text-primary" />
+                <span>Explore & Trends</span>
               </Link>
             </li>
             <li>

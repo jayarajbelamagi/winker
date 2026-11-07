@@ -171,19 +171,42 @@ export const deletePost = async (req, res) => {
 	}
 };
 
-// COMMENT ON A POST
+// COMMENT ON A POST (supports text and/or image/GIF)
 export const commentOnPost = async (req, res) => {
 	try {
-		const { text } = req.body;
+		const { text, img: rawImg } = req.body;
 		const postId = req.params.id;
 		const userId = req.user._id;
 
-		if (!text) return res.status(400).json({ error: "Text field is required" });
+		if ((!text || !text.trim()) && !rawImg) {
+			return res.status(400).json({ error: "Comment must have text or an image/GIF" });
+		}
 
 		const post = await Post.findById(postId);
 		if (!post) return res.status(404).json({ error: "Post not found" });
 
-		const comment = { user: userId, text };
+		let commentImg = null;
+		if (rawImg) {
+			if (typeof rawImg === "string" && rawImg.startsWith("http")) {
+				commentImg = rawImg;
+			} else if (typeof rawImg === "string" && rawImg.startsWith("data:image/")) {
+				try {
+					const uploadRes = await cloudinary.uploader.upload(rawImg, {
+						folder: "winker_comments",
+						resource_type: "image",
+					});
+					commentImg = uploadRes.secure_url;
+				} catch (err) {
+					console.error("Cloudinary upload failed for comment:", err.message);
+				}
+			}
+		}
+
+		const comment = {
+			user: userId,
+			text: text ? text.trim() : "",
+			img: commentImg,
+		};
 		post.comments.push(comment);
 		await post.save();
 
@@ -207,13 +230,15 @@ export const commentOnPost = async (req, res) => {
 	}
 };
 
-// REPLY TO A COMMENT ON A POST
+// REPLY TO A COMMENT ON A POST (supports text and/or image/GIF)
 export const replyToComment = async (req, res) => {
 	try {
 		const { postId, commentId } = req.params;
-		const { text } = req.body;
+		const { text, img: rawImg } = req.body;
 
-		if (!text || !text.trim()) return res.status(400).json({ error: "Reply text is required" });
+		if ((!text || !text.trim()) && !rawImg) {
+			return res.status(400).json({ error: "Reply must have text or an image/GIF" });
+		}
 
 		const post = await Post.findById(postId);
 		if (!post) return res.status(404).json({ error: "Post not found" });
@@ -221,10 +246,28 @@ export const replyToComment = async (req, res) => {
 		const comment = post.comments.id(commentId);
 		if (!comment) return res.status(404).json({ error: "Comment not found" });
 
+		let replyImg = null;
+		if (rawImg) {
+			if (typeof rawImg === "string" && rawImg.startsWith("http")) {
+				replyImg = rawImg;
+			} else if (typeof rawImg === "string" && rawImg.startsWith("data:image/")) {
+				try {
+					const uploadRes = await cloudinary.uploader.upload(rawImg, {
+						folder: "winker_comments",
+						resource_type: "image",
+					});
+					replyImg = uploadRes.secure_url;
+				} catch (err) {
+					console.error("Cloudinary upload failed for reply:", err.message);
+				}
+			}
+		}
+
 		if (!comment.replies) comment.replies = [];
 		comment.replies.push({
 			user: req.user._id,
-			text: text.trim(),
+			text: text ? text.trim() : "",
+			img: replyImg,
 			createdAt: new Date(),
 		});
 
@@ -454,5 +497,138 @@ export const getBookmarkedPosts = async (req, res) => {
 	} catch (error) {
 		console.error("Error in getBookmarkedPosts:", error);
 		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+// GET REAL-TIME TRENDING HASHTAGS
+export const getTrendingHashtags = async (req, res) => {
+	try {
+		// Look back across recent active posts (last 14 days)
+		const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+		const posts = await Post.find(getActivePostFilter({ createdAt: { $gte: cutoff } }))
+			.select("text createdAt")
+			.lean();
+
+		const tagCounts = {};
+		const hashtagRegex = /#([a-zA-Z0-9_\u0900-\u097F]+)/g;
+
+		posts.forEach((post) => {
+			if (!post.text) return;
+			const matches = post.text.match(hashtagRegex);
+			if (matches) {
+				const uniqueInPost = new Set(matches.map((m) => m.toLowerCase()));
+				uniqueInPost.forEach((rawTag) => {
+					tagCounts[rawTag] = (tagCounts[rawTag] || 0) + 1;
+				});
+			}
+		});
+
+		// Build sorted list
+		let trending = Object.entries(tagCounts)
+			.map(([tag, count]) => ({
+				tag,
+				count,
+				posts: `${count} ${count === 1 ? "post" : "posts"}`,
+				category: "Trending on Winker",
+			}))
+			.sort((a, b) => b.count - a.count);
+
+		// If few posts have hashtags, seed with high-interest topics so feed has rich trends
+		const defaultTrends = [
+			{ tag: "#Winker", count: 42, posts: "4.2K posts", category: "Community · Trending" },
+			{ tag: "#Tech2026", count: 28, posts: "2.8K posts", category: "Technology · Trending" },
+			{ tag: "#CricketChampionship", count: 24, posts: "3.5K posts", category: "Sports · Trending" },
+			{ tag: "#AIRevolution", count: 19, posts: "1.9K posts", category: "Technology · Trending" },
+			{ tag: "#IndiaTrending", count: 15, posts: "1.5K posts", category: "Trending in India" },
+			{ tag: "#DevLife", count: 12, posts: "1.2K posts", category: "Coding · Trending" },
+		];
+
+		defaultTrends.forEach((def) => {
+			if (!trending.some((t) => t.tag.toLowerCase() === def.tag.toLowerCase())) {
+				trending.push(def);
+			}
+		});
+
+		res.status(200).json(trending.slice(0, 10));
+	} catch (error) {
+		console.error("Error in getTrendingHashtags:", error);
+		res.status(500).json({ error: "Failed to load trending hashtags" });
+	}
+};
+
+// EXPLORE / SEARCH POSTS & USERS
+export const exploreSearch = async (req, res) => {
+	try {
+		const { q = "", tab = "top" } = req.query;
+		const trimmedQuery = q.trim();
+
+		let users = [];
+		let posts = [];
+
+		if (trimmedQuery) {
+			const safeRegex = new RegExp(trimmedQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+
+			// Search users if on "people" tab or "top" tab
+			if (tab === "people" || tab === "top") {
+				users = await User.find({
+					$or: [{ username: safeRegex }, { fullName: safeRegex }],
+				})
+					.select("-password")
+					.limit(tab === "people" ? 30 : 5);
+			}
+
+			// Search posts
+			if (tab !== "people") {
+				let postFilter = getActivePostFilter({ text: safeRegex });
+				if (tab === "media") {
+					postFilter = getActivePostFilter({
+						text: safeRegex,
+						img: { $ne: null },
+					});
+				}
+
+				let queryBuilder = Post.find(postFilter);
+				if (tab === "latest") {
+					queryBuilder = queryBuilder.sort({ createdAt: -1 });
+				} else {
+					queryBuilder = queryBuilder.sort({ createdAt: -1 });
+				}
+
+				posts = await queryBuilder
+					.limit(40)
+					.populate("user", "-password")
+					.populate("comments.user", "-password")
+					.populate("comments.replies.user", "-password")
+					.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });
+			}
+		} else {
+			// No search query: return top trending/active posts and suggested people
+			if (tab === "people") {
+				users = await User.find({ _id: { $ne: req.user._id } })
+					.select("-password")
+					.limit(20);
+			} else if (tab === "media") {
+				posts = await Post.find(getActivePostFilter({ img: { $ne: null } }))
+					.sort({ createdAt: -1 })
+					.limit(30)
+					.populate("user", "-password")
+					.populate("comments.user", "-password")
+					.populate("comments.replies.user", "-password")
+					.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });
+			} else {
+				posts = await Post.find(getActivePostFilter())
+					.sort({ createdAt: -1 })
+					.limit(30)
+					.populate("user", "-password")
+					.populate("comments.user", "-password")
+					.populate("comments.replies.user", "-password")
+					.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });
+			}
+		}
+
+		res.status(200).json({ posts, users });
+	} catch (error) {
+		console.error("Error in exploreSearch:", error);
+		res.status(500).json({ error: "Failed to search content" });
 	}
 };

@@ -58,6 +58,11 @@ const conversationSchema = new mongoose.Schema(
 			lastBumpedAt: { type: Date, default: null },
 			lastInteractionUser: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 		},
+		wallpapers: {
+			type: Map,
+			of: String,
+			default: {},
+		},
 	},
 	{ timestamps: true }
 );

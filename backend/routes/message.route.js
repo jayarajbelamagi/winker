@@ -27,6 +27,8 @@ import {
 	markViewOnceOpened,
 	togglePinConversation,
 	toggleStarMessage,
+	getConversationMedia,
+	updateConversationWallpaper,
 } from "../controllers/message.controller.js";
 
 const router = express.Router();
@@ -36,7 +38,9 @@ router.get("/conversations", protectRoute, getConversations);
 router.get("/contacts", protectRoute, getEligibleContacts);
 router.get("/calls/history", protectRoute, getCallHistory);
 
-// WhatsApp-style enhancements: Pinning, Reactions, View Once, Starred
+// WhatsApp-style enhancements: Pinning, Reactions, View Once, Starred, Media Gallery, Wallpaper
+router.get("/conversation/:conversationId/media", protectRoute, getConversationMedia);
+router.post("/conversation/:conversationId/wallpaper", protectRoute, updateConversationWallpaper);
 router.post("/pin/:conversationId", protectRoute, togglePinConversation);
 router.post("/react/:messageId", protectRoute, reactToMessage);
 router.post("/view-once/:messageId", protectRoute, markViewOnceOpened);

@@ -87,6 +87,11 @@ const messageSchema = new mongoose.Schema(
 			type: mongoose.Schema.Types.Mixed,
 			default: null,
 		},
+		sharedPost: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "Post",
+			default: null,
+		},
 		seen: {
 			type: Boolean,
 			default: false,

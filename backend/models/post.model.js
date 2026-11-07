@@ -51,7 +51,11 @@ const postSchema = new mongoose.Schema(
 			{
 				text: {
 					type: String,
-					required: true,
+					default: "",
+				},
+				img: {
+					type: String,
+					default: null,
 				},
 				user: {
 					type: mongoose.Schema.Types.ObjectId,
@@ -72,7 +76,11 @@ const postSchema = new mongoose.Schema(
 					{
 						text: {
 							type: String,
-							required: true,
+							default: "",
+						},
+						img: {
+							type: String,
+							default: null,
 						},
 						user: {
 							type: mongoose.Schema.Types.ObjectId,
