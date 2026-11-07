@@ -177,8 +177,8 @@ const CallModal = ({
       } : null);
 
   // Complete, foolproof hardware shutdown function (Camera LED & Mic guaranteed off)
-  const stopAllMedia = () => {
-    // 1. Stop local stream ref tracks
+  const cleanupCallHardware = () => {
+    // 1. Stop local stream ref tracks (shuts down laptop camera & mic hardware)
     if (localStreamRef.current) {
       stopMediaStream(localStreamRef.current);
       localStreamRef.current = null;
@@ -199,9 +199,6 @@ const CallModal = ({
     if (localVideoRef.current) {
       try {
         localVideoRef.current.pause();
-        if (localVideoRef.current.srcObject) {
-          stopMediaStream(localVideoRef.current.srcObject);
-        }
         localVideoRef.current.srcObject = null;
       } catch (e) {}
     }
@@ -210,9 +207,6 @@ const CallModal = ({
     if (remoteVideoRef.current) {
       try {
         remoteVideoRef.current.pause();
-        if (remoteVideoRef.current.srcObject) {
-          stopMediaStream(remoteVideoRef.current.srcObject);
-        }
         remoteVideoRef.current.srcObject = null;
       } catch (e) {}
     }
@@ -221,26 +215,13 @@ const CallModal = ({
     if (remoteAudioRef.current) {
       try {
         remoteAudioRef.current.pause();
-        if (remoteAudioRef.current.srcObject) {
-          stopMediaStream(remoteAudioRef.current.srcObject);
-        }
         remoteAudioRef.current.srcObject = null;
       } catch (e) {}
     }
 
-    // 7. Stop all WebRTC senders before closing connection
+    // 7. Close peer connection
     if (pcRef.current) {
       try {
-        if (typeof pcRef.current.getSenders === "function") {
-          pcRef.current.getSenders().forEach((sender) => {
-            if (sender && sender.track) {
-              try {
-                sender.track.stop();
-                sender.track.enabled = false;
-              } catch (e) {}
-            }
-          });
-        }
         pcRef.current.close();
       } catch (e) {}
       pcRef.current = null;
@@ -252,10 +233,8 @@ const CallModal = ({
 
   // 1. Initialize Local Media Stream (Camera / Mic)
   useEffect(() => {
-    let isCancelled = false;
-
     if (!isOpen) {
-      stopAllMedia();
+      cleanupCallHardware();
       return;
     }
 
@@ -284,11 +263,6 @@ const CallModal = ({
       navigator.mediaDevices
         .getUserMedia(constraints)
         .then((stream) => {
-          if (isCancelled) {
-            // Modal closed or call ended while camera was waking up
-            stopMediaStream(stream);
-            return;
-          }
           localStreamRef.current = stream;
           setLocalStream(stream);
           if (localVideoRef.current) {
@@ -297,17 +271,12 @@ const CallModal = ({
           }
         })
         .catch((err) => {
-          if (isCancelled) return;
           console.warn("Could not access camera/mic with ideal constraints:", err);
           setIsVideoOn(false);
           // Fallback to basic audio
           navigator.mediaDevices
             ?.getUserMedia({ audio: true })
             .then((stream) => {
-              if (isCancelled) {
-                stopMediaStream(stream);
-                return;
-              }
               localStreamRef.current = stream;
               setLocalStream(stream);
             })
@@ -316,8 +285,7 @@ const CallModal = ({
     }
 
     return () => {
-      isCancelled = true;
-      stopAllMedia();
+      cleanupCallHardware();
     };
   }, [isOpen, callType]);
 
@@ -347,30 +315,16 @@ const CallModal = ({
         pc.addTrack(track, localStream);
       });
 
-      // Batch ICE candidates every 250ms to prevent network flooding and connection dropouts
-      let pendingCandidates = [];
-      let candidateFlushTimer = null;
-
-      const flushCandidates = () => {
-        if (!isMounted || pendingCandidates.length === 0) return;
-        const toSend = [...pendingCandidates];
-        pendingCandidates = [];
-        apiFetch(`/api/messages/call/signal/${callId}`, {
-          method: "POST",
-          body: JSON.stringify({
-            senderType: isCaller ? "caller" : "receiver",
-            candidates: toSend,
-          }),
-        }).catch(() => {});
-      };
-
-      // Trickle ICE candidate event with batched delivery
+      // Trickle ICE candidate event with immediate delivery
       pc.onicecandidate = (event) => {
         if (event.candidate && isMounted) {
-          const cand = event.candidate.toJSON ? event.candidate.toJSON() : event.candidate;
-          pendingCandidates.push(cand);
-          if (candidateFlushTimer) clearTimeout(candidateFlushTimer);
-          candidateFlushTimer = setTimeout(flushCandidates, 250);
+          apiFetch(`/api/messages/call/signal/${callId}`, {
+            method: "POST",
+            body: JSON.stringify({
+              senderType: isCaller ? "caller" : "receiver",
+              candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate,
+            }),
+          }).catch(() => {});
         }
       };
 
@@ -534,10 +488,6 @@ const CallModal = ({
 
     return () => {
       isMounted = false;
-      if (candidateFlushTimer) {
-        clearTimeout(candidateFlushTimer);
-        flushCandidates();
-      }
       if (signalingPollRef.current) clearInterval(signalingPollRef.current);
       if (pcRef.current) {
         pcRef.current.close();
@@ -585,7 +535,7 @@ const CallModal = ({
         ringbackAudioRef.current();
         ringbackAudioRef.current = null;
       }
-      stopAllMedia();
+      cleanupCallHardware();
       playBusyTone();
       setTimeout(() => {
         handleEndCallClick();
@@ -597,7 +547,7 @@ const CallModal = ({
         ringbackAudioRef.current = null;
       }
       // Immediately shut down camera and mic hardware so laptop camera LED turns off at once!
-      stopAllMedia();
+      cleanupCallHardware();
       setTimeout(() => {
         handleEndCallClick();
       }, 1500);
@@ -614,7 +564,7 @@ const CallModal = ({
   // 4. Cleanup on unmount
   useEffect(() => {
     return () => {
-      stopAllMedia();
+      cleanupCallHardware();
       if (timerRef.current) clearInterval(timerRef.current);
       if (ringbackAudioRef.current) ringbackAudioRef.current();
       if (signalingPollRef.current) clearInterval(signalingPollRef.current);
@@ -696,7 +646,7 @@ const CallModal = ({
     if (signalingPollRef.current) clearInterval(signalingPollRef.current);
     
     // Stop all camera & mic hardware and release video sinks
-    stopAllMedia();
+    cleanupCallHardware();
 
     if (callSession?.callId) {
       onEndCall && onEndCall(callSession.callId);

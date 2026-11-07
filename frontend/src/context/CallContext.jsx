@@ -85,8 +85,10 @@ export const CallProvider = ({ children, authUser }) => {
           serverCall.status === "ended" ||
           serverCall.status === "missed"
         ) {
-          setIncomingCall(null);
-          if (activeCallRef.current) {
+          if (incomingCallRef.current && (!serverCall.callId || incomingCallRef.current.callId === serverCall.callId)) {
+            setIncomingCall(null);
+          }
+          if (activeCallRef.current && (!serverCall.callId || activeCallRef.current.callId === serverCall.callId)) {
             setActiveCall((prev) => (prev ? { ...prev, status: serverCall.status } : null));
           }
         }
