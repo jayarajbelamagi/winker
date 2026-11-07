@@ -116,6 +116,20 @@ const playBusyTone = () => {
   } catch (e) {}
 };
 
+// Helper: Safely stop all tracks on a MediaStream
+const stopMediaStream = (stream) => {
+  if (!stream) return;
+  try {
+    const tracks = typeof stream.getTracks === "function" ? stream.getTracks() : [];
+    tracks.forEach((track) => {
+      try {
+        track.stop();
+        track.enabled = false;
+      } catch (e) {}
+    });
+  } catch (e) {}
+};
+
 const CallModal = ({
   isOpen,
   callSession,
@@ -152,16 +166,86 @@ const CallModal = ({
     callSession?.callerId?.toString() === myIdStr;
   const partner = isCaller ? callSession?.receiver : callSession?.caller;
 
+  // Complete, foolproof hardware shutdown function (Camera LED & Mic guaranteed off)
+  const stopAllMedia = () => {
+    // 1. Stop local stream ref tracks
+    if (localStreamRef.current) {
+      stopMediaStream(localStreamRef.current);
+      localStreamRef.current = null;
+    }
+
+    // 2. Stop localStream state tracks
+    if (localStream) {
+      stopMediaStream(localStream);
+    }
+
+    // 3. Stop remote media stream ref
+    if (remoteMediaStreamRef.current) {
+      stopMediaStream(remoteMediaStreamRef.current);
+      remoteMediaStreamRef.current = null;
+    }
+
+    // 4. Detach from local video element and release hardware camera sink
+    if (localVideoRef.current) {
+      try {
+        localVideoRef.current.pause();
+        if (localVideoRef.current.srcObject) {
+          stopMediaStream(localVideoRef.current.srcObject);
+        }
+        localVideoRef.current.srcObject = null;
+      } catch (e) {}
+    }
+
+    // 5. Detach from remote video element
+    if (remoteVideoRef.current) {
+      try {
+        remoteVideoRef.current.pause();
+        if (remoteVideoRef.current.srcObject) {
+          stopMediaStream(remoteVideoRef.current.srcObject);
+        }
+        remoteVideoRef.current.srcObject = null;
+      } catch (e) {}
+    }
+
+    // 6. Detach from remote audio element
+    if (remoteAudioRef.current) {
+      try {
+        remoteAudioRef.current.pause();
+        if (remoteAudioRef.current.srcObject) {
+          stopMediaStream(remoteAudioRef.current.srcObject);
+        }
+        remoteAudioRef.current.srcObject = null;
+      } catch (e) {}
+    }
+
+    // 7. Stop all WebRTC senders before closing connection
+    if (pcRef.current) {
+      try {
+        if (typeof pcRef.current.getSenders === "function") {
+          pcRef.current.getSenders().forEach((sender) => {
+            if (sender && sender.track) {
+              try {
+                sender.track.stop();
+                sender.track.enabled = false;
+              } catch (e) {}
+            }
+          });
+        }
+        pcRef.current.close();
+      } catch (e) {}
+      pcRef.current = null;
+    }
+
+    setLocalStream(null);
+    setHasRemoteStream(false);
+  };
+
   // 1. Initialize Local Media Stream (Camera / Mic)
   useEffect(() => {
+    let isCancelled = false;
+
     if (!isOpen) {
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((t) => t.stop());
-        localStreamRef.current = null;
-      }
-      setLocalStream(null);
-      setHasRemoteStream(false);
-      remoteMediaStreamRef.current = null;
+      stopAllMedia();
       return;
     }
 
@@ -190,6 +274,11 @@ const CallModal = ({
       navigator.mediaDevices
         .getUserMedia(constraints)
         .then((stream) => {
+          if (isCancelled) {
+            // Modal closed or call ended while camera was waking up
+            stopMediaStream(stream);
+            return;
+          }
           localStreamRef.current = stream;
           setLocalStream(stream);
           if (localVideoRef.current) {
@@ -198,12 +287,17 @@ const CallModal = ({
           }
         })
         .catch((err) => {
+          if (isCancelled) return;
           console.warn("Could not access camera/mic with ideal constraints:", err);
           setIsVideoOn(false);
           // Fallback to basic audio
           navigator.mediaDevices
             ?.getUserMedia({ audio: true })
             .then((stream) => {
+              if (isCancelled) {
+                stopMediaStream(stream);
+                return;
+              }
               localStreamRef.current = stream;
               setLocalStream(stream);
             })
@@ -212,10 +306,8 @@ const CallModal = ({
     }
 
     return () => {
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((t) => t.stop());
-        localStreamRef.current = null;
-      }
+      isCancelled = true;
+      stopAllMedia();
     };
   }, [isOpen, callType]);
 
@@ -465,6 +557,7 @@ const CallModal = ({
         ringbackAudioRef.current();
         ringbackAudioRef.current = null;
       }
+      stopAllMedia();
       playBusyTone();
       setTimeout(() => {
         handleEndCallClick();
@@ -475,6 +568,8 @@ const CallModal = ({
         ringbackAudioRef.current();
         ringbackAudioRef.current = null;
       }
+      // Immediately shut down camera and mic hardware so laptop camera LED turns off at once!
+      stopAllMedia();
       setTimeout(() => {
         handleEndCallClick();
       }, 1500);
@@ -488,9 +583,10 @@ const CallModal = ({
     };
   }, [callSession?.status, callSession?.connectedAt, isOpen, isCaller]);
 
-  // 4. Cleanup
+  // 4. Cleanup on unmount
   useEffect(() => {
     return () => {
+      stopAllMedia();
       if (timerRef.current) clearInterval(timerRef.current);
       if (ringbackAudioRef.current) ringbackAudioRef.current();
       if (signalingPollRef.current) clearInterval(signalingPollRef.current);
@@ -525,12 +621,23 @@ const CallModal = ({
       const newStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: nextMode, width: { ideal: 1280 }, height: { ideal: 720 } },
       });
+      // If call was ended while camera was initializing:
+      if (!localStreamRef.current) {
+        stopMediaStream(newStream);
+        return;
+      }
       const newVideoTrack = newStream.getVideoTracks()[0];
       if (newVideoTrack) {
+        // Stop any other unused tracks in newStream
+        newStream.getTracks().forEach((t) => {
+          if (t !== newVideoTrack) t.stop();
+        });
+
         if (localStreamRef.current) {
           const oldVideoTrack = localStreamRef.current.getVideoTracks()[0];
           if (oldVideoTrack) {
             oldVideoTrack.stop();
+            oldVideoTrack.enabled = false;
             localStreamRef.current.removeTrack(oldVideoTrack);
           }
           localStreamRef.current.addTrack(newVideoTrack);
@@ -546,6 +653,8 @@ const CallModal = ({
         }
         setFacingMode(nextMode);
         toast.success(`Switched to ${nextMode === "user" ? "Front" : "Rear"} Camera`);
+      } else {
+        stopMediaStream(newStream);
       }
     } catch (err) {
       console.warn("Flip camera error:", err);
@@ -557,11 +666,10 @@ const CallModal = ({
     if (timerRef.current) clearInterval(timerRef.current);
     if (ringbackAudioRef.current) ringbackAudioRef.current();
     if (signalingPollRef.current) clearInterval(signalingPollRef.current);
-    if (pcRef.current) pcRef.current.close();
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop());
-      localStreamRef.current = null;
-    }
+    
+    // Stop all camera & mic hardware and release video sinks
+    stopAllMedia();
+
     if (callSession?.callId) {
       onEndCall && onEndCall(callSession.callId);
     }
