@@ -1,0 +1,79 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Build Winker APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Frontend Dependencies & Build Web App
+        run: |
+          cd frontend
+          npm install --legacy-peer-deps
+          npm run build
+          npx cap sync android
+
+      - name: Make Gradlew Executable
+        run: chmod +x frontend/android/gradlew
+
+      - name: Build Debug APK with Gradle
+        run: |
+          cd frontend/android
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Prepare APK File
+        run: |
+          mkdir -p build-output
+          cp frontend/android/app/build/outputs/apk/debug/app-debug.apk build-output/winker.apk
+
+      - name: Upload APK as Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: winker-android-apk
+          path: build-output/winker.apk
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        with:
+          tag_name: latest-apk
+          name: "Winker Android APK (Latest)"
+          make_latest: true
+          body: |
+            ### 📱 Winker Android APK
+            Direct download link for installing Winker on any Android phone.
+
+            **Installation Instructions:**
+            1. Download `winker.apk` below on your Android phone.
+            2. Tap to install (if prompted, allow "Install from this source").
+            3. Open Winker and enjoy!
+          files: build-output/winker.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

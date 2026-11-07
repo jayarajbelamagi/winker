@@ -6,7 +6,18 @@
 export const TOKEN_KEY = "winker_token";
 export const USER_KEY = "winker_user";
 
-const rawBase = (import.meta.env.VITE_API_URL || "").trim().replace(/\/$/, "");
+// In native Android APK (Capacitor), requests must point directly to Render backend
+const isCapacitor =
+	typeof window !== "undefined" &&
+	(Boolean(window.Capacitor?.isNativePlatform?.()) ||
+		Boolean(window.Capacitor) ||
+		window.location.protocol === "capacitor:" ||
+		window.location.protocol === "file:");
+
+const rawBase = (
+	import.meta.env.VITE_API_URL ||
+	(isCapacitor ? "https://winker-4.onrender.com" : "")
+).trim().replace(/\/$/, "");
 
 /**
  * Resolves full API URL

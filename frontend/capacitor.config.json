@@ -1,0 +1,21 @@
+{
+  "appId": "com.winker.app",
+  "appName": "Winker",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true,
+    "allowNavigation": [
+      "winker-4.onrender.com",
+      "*.onrender.com",
+      "res.cloudinary.com",
+      "*.cloudinary.com"
+    ]
+  },
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  }
+}
