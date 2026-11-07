@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { v2 as cloudinary } from "cloudinary";
 import User from "../models/user.model.js";
 import Notification from "../models/notification.model.js";
+import ProfileView from "../models/profile_view.model.js";
 
 // Helper to safely extract public ID from Cloudinary URL
 const getCloudinaryPublicId = (url) => {
@@ -33,7 +34,27 @@ export const getUserProfile = async (req, res) => {
 		}
 
 		if (!user) return res.status(404).json({ message: "User not found" });
-		res.status(200).json(user);
+
+		// Record profile view (LinkedIn style) non-blockingly if viewed by another user
+		if (req.user && req.user._id.toString() !== user._id.toString()) {
+			ProfileView.findOneAndUpdate(
+				{ profileUser: user._id, viewer: req.user._id },
+				{
+					$set: { viewedAt: new Date() },
+					$inc: { viewCount: 1 },
+				},
+				{ upsert: true }
+			).catch((err) => console.error("Error recording profile view:", err.message));
+		}
+
+		// If user is viewing their own profile, attach quick view stats
+		const userObj = user.toObject ? user.toObject() : { ...user };
+		if (req.user && req.user._id.toString() === user._id.toString()) {
+			const viewCount = await ProfileView.countDocuments({ profileUser: user._id });
+			userObj.profileViewsCount = viewCount;
+		}
+
+		res.status(200).json(userObj);
 	} catch (error) {
 		console.error("Error in getUserProfile:", error);
 		res.status(500).json({ error: error.message });
@@ -193,6 +214,36 @@ export const getFollowing = async (req, res) => {
     res.status(200).json(user.following);
   } catch (error) {
     console.error("Error in getFollowing:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// GET PROFILE VIEWS (LinkedIn-style Who Viewed Your Profile)
+export const getProfileViews = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const views = await ProfileView.find({ profileUser: userId })
+      .sort({ viewedAt: -1 })
+      .limit(60)
+      .populate({
+        path: "viewer",
+        select: "username fullName profileImg bio followers following",
+      });
+
+    // Clean out any references where user may no longer exist
+    const validViews = views.filter((v) => Boolean(v.viewer));
+
+    const totalViews = validViews.reduce((acc, v) => acc + (v.viewCount || 1), 0);
+    const uniqueViewersCount = validViews.length;
+
+    res.status(200).json({
+      views: validViews,
+      totalViews,
+      uniqueViewersCount,
+    });
+  } catch (error) {
+    console.error("Error in getProfileViews:", error);
     res.status(500).json({ error: error.message });
   }
 };

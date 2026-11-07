@@ -1,19 +1,28 @@
+import { useState } from "react";
 import XSvg from "../svgs/X";
 
 import { MdHomeFilled } from "react-icons/md";
-import { IoNotifications, IoMailOutline, IoCallOutline } from "react-icons/io5";
+import {
+	IoNotifications,
+	IoMailOutline,
+	IoCallOutline,
+	IoNewspaperOutline,
+	IoEyeOutline,
+} from "react-icons/io5";
 import { FaUser } from "react-icons/fa";
 import { AiOutlineRobot } from "react-icons/ai";
-import { IoNewspaperOutline } from "react-icons/io5";
 import { BsBookmark } from "react-icons/bs";
 import { Link } from "react-router-dom";
 import { BiLogOut } from "react-icons/bi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { apiFetch, clearStoredAuth } from "../../lib/api";
+import ProfileViewsModal from "../profile/ProfileViewsModal";
 
 const Sidebar = () => {
 	const queryClient = useQueryClient();
+	const [showProfileViews, setShowProfileViews] = useState(false);
+
 	const { mutate: logout } = useMutation({
 		mutationFn: async () => {
 			try {
@@ -42,34 +51,50 @@ const Sidebar = () => {
 			toast.success("Logged out");
 		},
 	});
+
 	const { data: authUser } = useQuery({ queryKey: ["authUser"] });
 
+	// Query LinkedIn-style Profile Views for the badge count
+	const { data: profileViewsData } = useQuery({
+		queryKey: ["profileViews"],
+		queryFn: async () => {
+			const res = await apiFetch("/api/users/profile-views");
+			const json = await res.json();
+			if (!res.ok) return null;
+			return json;
+		},
+		enabled: Boolean(authUser),
+	});
+
 	return (
-		<div className='hidden md:flex md:flex-[2_2_0] max-w-52'>
-			<div className='sticky top-0 left-0 h-screen flex flex-col border-r border-gray-700 w-full'>
-				<Link to='/' className='flex justify-center md:justify-start my-1'>
-					<XSvg className='p-2 w-14 h-14 rounded-full fill-white hover:bg-stone-900 transition' />
+		<aside className='hidden md:flex flex-col w-56 lg:w-64 xl:w-72 flex-shrink-0 border-r border-gray-800 sticky top-0 h-screen px-3 lg:px-4 z-20 bg-black justify-between select-none'>
+			<div className='flex flex-col'>
+				{/* Brand Logo */}
+				<Link to='/' className='flex justify-center md:justify-start my-2'>
+					<XSvg className='p-2 w-12 h-12 rounded-full fill-white hover:bg-stone-900 transition' />
 				</Link>
-				<ul className='flex flex-col gap-2 mt-4'>
+
+				{/* Navigation Links */}
+				<ul className='flex flex-col gap-1.5 mt-2'>
 					{/* 1. Home */}
 					<li className='flex justify-center md:justify-start'>
 						<Link
 							to='/'
-							className='flex gap-3 items-center hover:bg-stone-900 transition-all rounded-full duration-300 py-2 pl-2 pr-4 max-w-fit cursor-pointer'
+							className='flex gap-3.5 items-center hover:bg-stone-900 transition-all rounded-full duration-200 py-2.5 px-3 max-w-fit cursor-pointer text-stone-200 hover:text-white'
 						>
-							<MdHomeFilled className='w-7 h-7' />
-							<span className='text-lg hidden md:block'>Home</span>
+							<MdHomeFilled className='w-6 h-6' />
+							<span className='text-base hidden md:block font-medium'>Home</span>
 						</Link>
 					</li>
 
-					{/* 2. News (India Trending) */}
+					{/* 2. News (Trending) */}
 					<li className='flex justify-center md:justify-start'>
 						<Link
 							to='/news'
-							className='flex gap-3 items-center hover:bg-stone-900 transition-all rounded-full duration-300 py-2 pl-2 pr-4 max-w-fit cursor-pointer group'
+							className='flex gap-3.5 items-center hover:bg-stone-900 transition-all rounded-full duration-200 py-2.5 px-3 max-w-fit cursor-pointer group text-stone-200 hover:text-white'
 						>
-							<IoNewspaperOutline className='w-7 h-7 text-primary group-hover:scale-110 transition' />
-							<span className='text-lg hidden md:block font-medium'>News</span>
+							<IoNewspaperOutline className='w-6 h-6 text-primary group-hover:scale-110 transition' />
+							<span className='text-base hidden md:block font-medium'>News</span>
 						</Link>
 					</li>
 
@@ -77,10 +102,10 @@ const Sidebar = () => {
 					<li className='flex justify-center md:justify-start'>
 						<Link
 							to='/notifications'
-							className='flex gap-3 items-center hover:bg-stone-900 transition-all rounded-full duration-300 py-2 pl-2 pr-4 max-w-fit cursor-pointer'
+							className='flex gap-3.5 items-center hover:bg-stone-900 transition-all rounded-full duration-200 py-2.5 px-3 max-w-fit cursor-pointer text-stone-200 hover:text-white'
 						>
-							<IoNotifications className='w-7 h-7' />
-							<span className='text-lg hidden md:block'>Notifications</span>
+							<IoNotifications className='w-6 h-6' />
+							<span className='text-base hidden md:block font-medium'>Notifications</span>
 						</Link>
 					</li>
 
@@ -88,64 +113,92 @@ const Sidebar = () => {
 					<li className='flex justify-center md:justify-start'>
 						<Link
 							to='/messages'
-							className='flex gap-3 items-center hover:bg-stone-900 transition-all rounded-full duration-300 py-2 pl-2 pr-4 max-w-fit cursor-pointer group'
+							className='flex gap-3.5 items-center hover:bg-stone-900 transition-all rounded-full duration-200 py-2.5 px-3 max-w-fit cursor-pointer group text-stone-200 hover:text-white'
 						>
-							<IoMailOutline className='w-7 h-7 group-hover:text-primary transition' />
-							<span className='text-lg hidden md:block font-medium'>Messages</span>
+							<IoMailOutline className='w-6 h-6 group-hover:text-primary transition' />
+							<span className='text-base hidden md:block font-medium'>Messages</span>
 						</Link>
 					</li>
 
-					{/* 5. Calls (Dedicated Feature) */}
+					{/* 5. Calls */}
 					<li className='flex justify-center md:justify-start'>
 						<Link
 							to='/calls'
-							className='flex gap-3 items-center hover:bg-stone-900 transition-all rounded-full duration-300 py-2 pl-2 pr-4 max-w-fit cursor-pointer group'
+							className='flex gap-3.5 items-center hover:bg-stone-900 transition-all rounded-full duration-200 py-2.5 px-3 max-w-fit cursor-pointer group text-stone-200 hover:text-white'
 						>
-							<IoCallOutline className='w-7 h-7 text-emerald-400 group-hover:scale-110 transition' />
-							<span className='text-lg hidden md:block font-medium'>Calls</span>
+							<IoCallOutline className='w-6 h-6 text-emerald-400 group-hover:scale-110 transition' />
+							<span className='text-base hidden md:block font-medium'>Calls</span>
 						</Link>
 					</li>
 
-					{/* 4. Bookmarks */}
+					{/* 6. Bookmarks */}
 					<li className='flex justify-center md:justify-start'>
 						<Link
 							to='/bookmarks'
-							className='flex gap-3 items-center hover:bg-stone-900 transition-all rounded-full duration-300 py-2 pl-2 pr-4 max-w-fit cursor-pointer'
+							className='flex gap-3.5 items-center hover:bg-stone-900 transition-all rounded-full duration-200 py-2.5 px-3 max-w-fit cursor-pointer text-stone-200 hover:text-white'
 						>
-							<BsBookmark className='w-6 h-6 ml-0.5' />
-							<span className='text-lg hidden md:block'>Bookmarks</span>
+							<BsBookmark className='w-5 h-5 ml-0.5' />
+							<span className='text-base hidden md:block font-medium'>Bookmarks</span>
 						</Link>
 					</li>
 
-					{/* 5. Thook AI */}
+					{/* 7. Thook AI */}
 					<li className='flex justify-center md:justify-start'>
 						<Link
 							to='/chat'
-							className='flex gap-3 items-center hover:bg-stone-900 transition-all rounded-full duration-300 py-2 pl-2 pr-4 max-w-fit cursor-pointer'
+							className='flex gap-3.5 items-center hover:bg-stone-900 transition-all rounded-full duration-200 py-2.5 px-3 max-w-fit cursor-pointer text-stone-200 hover:text-white'
 						>
-							<AiOutlineRobot className='w-7 h-7' />
-							<span className='text-lg hidden md:block'>Thook</span>
+							<AiOutlineRobot className='w-6 h-6 text-sky-400' />
+							<span className='text-base hidden md:block font-medium'>Thook AI</span>
 						</Link>
 					</li>
 
-					{/* 6. Profile */}
+					{/* 8. LinkedIn-Style Profile Views (Eye Feature) */}
+					<li className='flex justify-center md:justify-start'>
+						<button
+							onClick={() => setShowProfileViews(true)}
+							className='flex gap-3.5 items-center hover:bg-stone-900 transition-all rounded-full duration-200 py-2.5 px-3 max-w-fit cursor-pointer group w-full text-left text-stone-200 hover:text-white'
+							title='Who viewed your profile (LinkedIn style)'
+						>
+							<div className='relative'>
+								<IoEyeOutline className='w-6 h-6 text-sky-400 group-hover:scale-110 transition' />
+								{profileViewsData?.uniqueViewersCount > 0 && (
+									<span className='absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-sky-400 animate-pulse'></span>
+								)}
+							</div>
+							<span className='text-base hidden md:flex items-center gap-2 font-medium'>
+								<span>Views</span>
+								{profileViewsData?.uniqueViewersCount > 0 && (
+									<span className='text-xs px-2 py-0.2 rounded-full bg-sky-500/20 text-sky-400 font-bold border border-sky-500/30'>
+										{profileViewsData.uniqueViewersCount}
+									</span>
+								)}
+							</span>
+						</button>
+					</li>
+
+					{/* 9. Profile */}
 					<li className='flex justify-center md:justify-start'>
 						<Link
 							to={`/profile/${authUser?.username}`}
-							className='flex gap-3 items-center hover:bg-stone-900 transition-all rounded-full duration-300 py-2 pl-2 pr-4 max-w-fit cursor-pointer'
+							className='flex gap-3.5 items-center hover:bg-stone-900 transition-all rounded-full duration-200 py-2.5 px-3 max-w-fit cursor-pointer text-stone-200 hover:text-white'
 						>
-							<FaUser className='w-6 h-6 ml-0.5' />
-							<span className='text-lg hidden md:block'>Profile</span>
+							<FaUser className='w-5 h-5 ml-0.5' />
+							<span className='text-base hidden md:block font-medium'>Profile</span>
 						</Link>
 					</li>
 				</ul>
-				{authUser && (
+			</div>
+
+			{/* User Profile Pill at Bottom */}
+			{authUser && (
+				<div className='mb-4'>
 					<Link
 						to={`/profile/${authUser.username}`}
-						className='mt-auto mb-10 flex gap-2 items-start transition-all duration-300 hover:bg-[#181818] py-2 px-4 rounded-full'
+						className='flex gap-2.5 items-center transition-all duration-200 hover:bg-stone-900/80 p-2.5 rounded-2xl border border-transparent hover:border-stone-800'
 					>
-						<div className='avatar hidden md:inline-flex'>
-							<div className='w-8 rounded-full overflow-hidden'>
+						<div className='avatar flex-shrink-0'>
+							<div className='w-9 h-9 rounded-full overflow-hidden border border-stone-700'>
 								<img
 									src={authUser?.profileImg || "/avatar-placeholder.png"}
 									alt='Avatar'
@@ -156,13 +209,13 @@ const Sidebar = () => {
 								/>
 							</div>
 						</div>
-						<div className='flex justify-between flex-1'>
-							<div className='hidden md:block'>
-								<p className='text-white font-bold text-sm w-20 truncate'>{authUser?.fullName}</p>
-								<p className='text-slate-500 text-sm'>@{authUser?.username}</p>
+						<div className='flex justify-between items-center flex-1 min-w-0'>
+							<div className='hidden md:block min-w-0'>
+								<p className='text-white font-bold text-sm truncate'>{authUser?.fullName}</p>
+								<p className='text-stone-500 text-xs truncate'>@{authUser?.username}</p>
 							</div>
 							<BiLogOut
-								className='w-5 h-5 cursor-pointer text-stone-400 hover:text-white'
+								className='w-5 h-5 cursor-pointer text-stone-400 hover:text-red-400 transition flex-shrink-0 ml-1'
 								onClick={(e) => {
 									e.preventDefault();
 									logout();
@@ -171,9 +224,17 @@ const Sidebar = () => {
 							/>
 						</div>
 					</Link>
-				)}
-			</div>
-		</div>
+				</div>
+			)}
+
+			{/* LinkedIn-style Who Viewed Your Profile Modal */}
+			<ProfileViewsModal
+				isOpen={showProfileViews}
+				onClose={() => setShowProfileViews(false)}
+				authUser={authUser}
+			/>
+		</aside>
 	);
 };
+
 export default Sidebar;

@@ -3,13 +3,23 @@ import Notification from "../models/notification.model.js";
 export const getNotifications = async (req, res) => {
 	try {
 		const userId = req.user._id;
+		// Filter notifications from the last 24 hours only
+		const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-		const notifications = await Notification.find({ to: userId }).populate({
-			path: "from",
-			select: "username profileImg",
-		});
+		const notifications = await Notification.find({
+			to: userId,
+			createdAt: { $gte: last24Hours },
+		})
+			.sort({ createdAt: -1 })
+			.populate({
+				path: "from",
+				select: "username fullName profileImg",
+			});
 
-		await Notification.updateMany({ to: userId }, { read: true });
+		await Notification.updateMany(
+			{ to: userId, createdAt: { $gte: last24Hours } },
+			{ read: true }
+		);
 
 		res.status(200).json(notifications);
 	} catch (error) {

@@ -26,7 +26,7 @@ const FollowersPage = () => {
   if (loading) return <p className="p-4 text-center text-gray-500">Loading followers...</p>;
 
   return (
-    <div className="max-w-2xl mx-auto mt-6 w-full px-4">
+    <div className="flex-[4_4_0] min-w-0 max-w-2xl xl:max-w-3xl w-full border-r border-gray-800 min-h-screen p-4">
       <h2 className="text-2xl font-bold mb-4">Followers</h2>
       {followers.length === 0 ? (
         <p className="text-gray-500">No followers found.</p>

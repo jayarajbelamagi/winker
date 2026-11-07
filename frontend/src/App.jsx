@@ -116,11 +116,7 @@ function App() {
         />
       )}
 
-      <div
-        className={`flex w-full mx-auto relative min-h-screen pb-16 md:pb-0 ${
-          isWidePage ? "max-w-[1600px] px-0 md:px-2 lg:px-4" : "max-w-6xl px-0"
-        }`}
-      >
+      <div className="flex w-full relative min-h-screen pb-16 md:pb-0">
         {authUser && <Sidebar />}
         <Routes>
           <Route

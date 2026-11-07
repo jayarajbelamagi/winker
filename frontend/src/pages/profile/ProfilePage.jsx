@@ -8,11 +8,12 @@ import ProfileHeaderSkeleton from "../../components/skeletons/ProfileHeaderSkele
 import EditProfileModal from "./EditProfileModal";
 
 import { FaArrowLeft } from "react-icons/fa6";
-import { IoCalendarOutline } from "react-icons/io5";
+import { IoCalendarOutline, IoEyeOutline } from "react-icons/io5";
 import { FaLink } from "react-icons/fa";
 import { MdEdit } from "react-icons/md";
-import { FiSend, FiPhone, FiVideo } from "react-icons/fi";
+import { FiSend, FiPhone, FiVideo, FiChevronRight } from "react-icons/fi";
 import { useCall } from "../../context/CallContext";
+import ProfileViewsModal from "../../components/profile/ProfileViewsModal";
 
 import { formatMemberSinceDate } from "../../utils/date";
 import useFollow from "../../hooks/useFollow";
@@ -25,6 +26,7 @@ const ProfilePage = () => {
   const [profileImgPreview, setProfileImgPreview] = useState(null);
   const [isCompressing, setIsCompressing] = useState(false);
   const [feedType, setFeedType] = useState("posts");
+  const [showProfileViews, setShowProfileViews] = useState(false);
 
   const coverImgRef = useRef(null);
   const profileImgRef = useRef(null);
@@ -52,6 +54,18 @@ const ProfilePage = () => {
   });
 
   const isMyProfile = authUser?._id?.toString() === user?._id?.toString();
+
+  // LinkedIn-style Profile Views query (only active for user's own profile)
+  const { data: profileViewsData } = useQuery({
+    queryKey: ["profileViews"],
+    queryFn: async () => {
+      const res = await apiFetch("/api/users/profile-views");
+      const data = await res.json();
+      if (!res.ok) return null;
+      return data;
+    },
+    enabled: Boolean(isMyProfile),
+  });
   const amIFollowing =
     authUser?.following?.some((id) => (id?._id || id)?.toString() === user?._id?.toString()) ||
     user?.followers?.some((id) => (id?._id || id)?.toString() === authUser?._id?.toString());
@@ -128,7 +142,7 @@ const ProfilePage = () => {
   };
 
   return (
-    <div className="flex-[4_4_0] min-w-0 w-full border-r border-gray-700 min-h-screen">
+    <div className="flex-[4_4_0] min-w-0 max-w-2xl xl:max-w-3xl w-full border-r border-gray-800 min-h-screen">
       {/* Floating Save Bar for Selected Photos */}
       {isMyProfile && (coverImgPreview || profileImgPreview) && (
         <div className="sticky top-2 z-50 bg-sky-600 text-white px-4 py-3 rounded-xl mx-4 my-2 flex justify-between items-center shadow-2xl border border-sky-400 animate-in fade-in">
@@ -311,8 +325,8 @@ const ProfilePage = () => {
                 </div>
               </div>
 
-              {/* FOLLOWERS / FOLLOWING */}
-              <div className="flex gap-4 mt-2">
+              {/* FOLLOWERS / FOLLOWING & PROFILE VIEWS */}
+              <div className="flex gap-4 mt-2 flex-wrap items-center">
                 <p
                   className="cursor-pointer text-sm text-gray-400 hover:underline"
                   onClick={() => navigate(`/${user.username}/followers`)}
@@ -325,7 +339,54 @@ const ProfilePage = () => {
                 >
                   <span className="font-bold text-white">{user.following?.length || 0}</span> Following
                 </p>
+                {isMyProfile && (
+                  <button
+                    onClick={() => setShowProfileViews(true)}
+                    className="flex items-center gap-1.5 text-sm text-sky-400 hover:text-sky-300 hover:underline transition font-medium"
+                    title="Who viewed your profile (LinkedIn style)"
+                  >
+                    <IoEyeOutline className="w-4 h-4 text-sky-400" />
+                    <span>
+                      <strong className="text-white">
+                        {profileViewsData?.uniqueViewersCount ?? user?.profileViewsCount ?? 0}
+                      </strong>{" "}
+                      Profile Views
+                    </span>
+                  </button>
+                )}
               </div>
+
+              {/* LinkedIn-style Who Viewed Your Profile Card (Only for own profile) */}
+              {isMyProfile && (
+                <div
+                  onClick={() => setShowProfileViews(true)}
+                  className="mt-3 p-3.5 bg-gradient-to-r from-sky-950/40 via-stone-900 to-sky-950/20 border border-sky-800/40 hover:border-sky-500/60 rounded-2xl cursor-pointer transition flex items-center justify-between group shadow-sm"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-sky-500/20 border border-sky-500/30 flex items-center justify-center text-sky-400 text-lg group-hover:scale-110 transition">
+                      👁️
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-white">Who viewed your profile</span>
+                        <span className="text-[10px] px-2 py-0.2 rounded-full bg-sky-500/20 text-sky-400 font-semibold border border-sky-500/30">
+                          LinkedIn style
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-400 mt-0.5">
+                        <strong className="text-sky-400 font-bold">
+                          {profileViewsData?.uniqueViewersCount ?? user?.profileViewsCount ?? 0} people
+                        </strong>{" "}
+                        viewed your profile recently
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-sky-400 font-medium group-hover:translate-x-0.5 transition">
+                    <span>See all</span>
+                    <FiChevronRight className="w-4 h-4" />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* FEED TYPE TABS */}
@@ -358,6 +419,15 @@ const ProfilePage = () => {
 
         <Posts feedType={feedType} username={username} userId={user?._id} />
       </div>
+
+      {/* LinkedIn-style Who Viewed Your Profile Modal */}
+      {isMyProfile && (
+        <ProfileViewsModal
+          isOpen={showProfileViews}
+          onClose={() => setShowProfileViews(false)}
+          authUser={authUser}
+        />
+      )}
     </div>
   );
 };

@@ -7,7 +7,7 @@ const Home = ({ authUser }) => {
   const [feedType, setFeedType] = useState("forYou");
 
   return (
-    <div className="flex-[4_4_0] min-w-0 w-full border-r border-gray-700 min-h-screen">
+    <div className="flex-[4_4_0] min-w-0 max-w-2xl xl:max-w-3xl w-full border-r border-gray-800 min-h-screen">
       {/* Feed Type Tabs (Sticky like X) */}
       <div className="flex w-full border-b border-gray-700 sticky top-12 md:top-0 bg-black/85 backdrop-blur-md z-20 font-semibold text-sm">
         <div

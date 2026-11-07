@@ -129,7 +129,7 @@ const NewsPage = () => {
 			onTouchStart={handleTouchStart}
 			onTouchMove={handleTouchMove}
 			onTouchEnd={handleTouchEnd}
-			className="flex-[4_4_0] min-w-0 w-full border-r border-gray-700 min-h-screen relative"
+			className="flex-[4_4_0] min-w-0 max-w-2xl xl:max-w-3xl w-full border-r border-gray-800 min-h-screen relative"
 		>
 			{/* Floating "↑ New stories" Pill */}
 			{showScrollTopPill && (

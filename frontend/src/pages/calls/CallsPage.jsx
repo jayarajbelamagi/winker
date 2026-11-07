@@ -93,7 +93,7 @@ const CallsPage = ({ authUser }) => {
   };
 
   return (
-    <div className="flex-[4_4_0] min-w-0 w-full min-h-screen border-r border-gray-700 bg-black text-white pb-20 md:pb-10">
+    <div className="flex-1 min-w-0 w-full min-h-screen border-r border-gray-800 bg-black text-white pb-20 md:pb-10">
       {/* Top Header */}
       <div className="p-4 border-b border-gray-800 sticky top-0 bg-stone-950/95 backdrop-blur-md z-20 flex items-center justify-between">
         <div className="flex items-center gap-2.5">

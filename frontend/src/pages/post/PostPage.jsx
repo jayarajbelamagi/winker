@@ -239,7 +239,7 @@ const PostPage = ({ authUser }) => {
     : "";
 
   return (
-    <div className="flex-[4_4_0] min-w-0 border-r border-gray-700 min-h-screen pb-20 md:pb-6">
+    <div className="flex-[4_4_0] min-w-0 max-w-2xl xl:max-w-3xl border-r border-gray-800 min-h-screen pb-20 md:pb-6">
       {/* Top Header: Sticky like X */}
       <div className="sticky top-0 z-20 bg-black/85 backdrop-blur-md px-4 py-3 border-b border-gray-700 flex items-center gap-6">
         <button
