@@ -105,21 +105,25 @@ const IncomingCallModal = ({ incomingCall, onAccept, onDecline }) => {
         {/* Incoming Badge */}
         <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase tracking-wider mb-6 animate-pulse">
           {isVideo ? <IoVideocam className="w-4 h-4" /> : <IoCall className="w-4 h-4" />}
-          <span>Incoming {isVideo ? "Video" : "Audio"} Call...</span>
+          <span>{incomingCall.isGroupCall ? `Incoming Group ${isVideo ? "Video" : "Voice"} Call` : `Incoming ${isVideo ? "Video" : "Audio"} Call...`}</span>
         </span>
 
         {/* Pulsing Caller Avatar */}
         <div className="relative my-4">
-          <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-emerald-500/60 shadow-xl shadow-emerald-500/20">
-            <img
-              src={caller.profileImg || "/avatar-placeholder.png"}
-              alt=""
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                e.target.onerror = null;
-                e.target.src = "/avatar-placeholder.png";
-              }}
-            />
+          <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-emerald-500/60 shadow-xl shadow-emerald-500/20 bg-stone-800 flex items-center justify-center">
+            {incomingCall.isGroupCall ? (
+              <span className="text-5xl">👥</span>
+            ) : (
+              <img
+                src={caller.profileImg || "/avatar-placeholder.png"}
+                alt=""
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = "/avatar-placeholder.png";
+                }}
+              />
+            )}
           </div>
           {/* Multiple Glowing Radar Rings */}
           <div className="absolute inset-0 rounded-full border-4 border-emerald-400/40 animate-ping pointer-events-none" />
@@ -127,8 +131,14 @@ const IncomingCallModal = ({ incomingCall, onAccept, onDecline }) => {
         </div>
 
         {/* Caller Info */}
-        <h3 className="text-xl font-bold text-white mt-2">{caller.fullName || "Someone"}</h3>
-        <p className="text-sm text-stone-400 mb-8">@{caller.username || "user"}</p>
+        <h3 className="text-xl font-bold text-white mt-2">
+          {incomingCall.isGroupCall ? incomingCall.groupName : (caller.fullName || "Someone")}
+        </h3>
+        <p className="text-sm text-stone-400 mb-8">
+          {incomingCall.isGroupCall
+            ? `Group call started by ${caller.fullName || "a member"}`
+            : `@${caller.username || "user"}`}
+        </p>
 
         {/* Two Prominent Action Buttons: Decline (Red) & Accept (Green) */}
         <div className="w-full flex items-center justify-around px-4">

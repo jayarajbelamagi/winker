@@ -39,12 +39,7 @@ const ProfileViewsModal = ({ isOpen, onClose, authUser }) => {
 							<IoEyeOutline className='w-5 h-5' />
 						</div>
 						<div>
-							<div className='flex items-center gap-2'>
-								<h2 className='font-bold text-base text-white'>Who Viewed Your Profile</h2>
-								<span className='text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-400 border border-sky-500/30'>
-									LinkedIn Style
-								</span>
-							</div>
+							<h2 className='font-bold text-base text-white'>Who Viewed Your Profile</h2>
 							<p className='text-xs text-stone-400'>Private to you · Recent profile visitors</p>
 						</div>
 					</div>
@@ -196,7 +191,7 @@ const ProfileViewsModal = ({ isOpen, onClose, authUser }) => {
 
 				{/* Footer info note */}
 				<div className='p-3 bg-stone-900/50 border-t border-gray-800 text-center text-[11px] text-stone-400 flex-shrink-0'>
-					🔒 Profile view history is private to you, exactly like LinkedIn.
+					🔒 Profile view history is private to you.
 				</div>
 			</div>
 		</div>

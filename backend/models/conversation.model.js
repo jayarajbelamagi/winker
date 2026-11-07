@@ -16,6 +16,29 @@ const conversationSchema = new mongoose.Schema(
 				default: [],
 			},
 		],
+		isGroup: {
+			type: Boolean,
+			default: false,
+			index: true,
+		},
+		groupName: {
+			type: String,
+			default: "",
+			trim: true,
+		},
+		groupImg: {
+			type: String,
+			default: "",
+		},
+		groupDescription: {
+			type: String,
+			default: "",
+		},
+		groupAdmin: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "User",
+			default: null,
+		},
 		lastMessage: {
 			text: { type: String, default: "" },
 			senderId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
@@ -31,6 +54,9 @@ const conversationSchema = new mongoose.Schema(
 	},
 	{ timestamps: true }
 );
+
+conversationSchema.index({ participants: 1 });
+conversationSchema.index({ updatedAt: -1 });
 
 const Conversation = mongoose.model("Conversation", conversationSchema);
 

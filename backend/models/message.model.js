@@ -10,7 +10,22 @@ const messageSchema = new mongoose.Schema(
 		receiverId: {
 			type: mongoose.Schema.Types.ObjectId,
 			ref: "User",
-			required: true,
+			required: false,
+			default: null,
+		},
+		conversationId: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "Conversation",
+			default: null,
+			index: true,
+		},
+		isGroupMessage: {
+			type: Boolean,
+			default: false,
+		},
+		isSystem: {
+			type: Boolean,
+			default: false,
 		},
 		text: {
 			type: String,
@@ -35,6 +50,9 @@ const messageSchema = new mongoose.Schema(
 	},
 	{ timestamps: true }
 );
+
+messageSchema.index({ conversationId: 1, createdAt: 1 });
+messageSchema.index({ senderId: 1, receiverId: 1, createdAt: 1 });
 
 const Message = mongoose.model("Message", messageSchema);
 

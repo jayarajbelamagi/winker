@@ -17,9 +17,30 @@ const callSessionSchema = new mongoose.Schema(
 		receiverId: {
 			type: mongoose.Schema.Types.ObjectId,
 			ref: "User",
-			required: true,
+			required: false,
 			index: true,
 		},
+		isGroupCall: {
+			type: Boolean,
+			default: false,
+			index: true,
+		},
+		groupName: {
+			type: String,
+			default: "",
+		},
+		conversationId: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "Conversation",
+			default: null,
+			index: true,
+		},
+		participantIds: [
+			{
+				type: mongoose.Schema.Types.ObjectId,
+				ref: "User",
+			},
+		],
 		caller: {
 			_id: { type: String, required: true },
 			fullName: { type: String, default: "" },
@@ -27,7 +48,7 @@ const callSessionSchema = new mongoose.Schema(
 			profileImg: { type: String, default: "/avatar-placeholder.png" },
 		},
 		receiver: {
-			_id: { type: String, required: true },
+			_id: { type: String, default: "" },
 			fullName: { type: String, default: "" },
 			username: { type: String, default: "" },
 			profileImg: { type: String, default: "/avatar-placeholder.png" },
@@ -76,6 +97,7 @@ const callSessionSchema = new mongoose.Schema(
 );
 
 callSessionSchema.index({ createdAt: 1 }, { expireAfterSeconds: 7200 });
+callSessionSchema.index({ participantIds: 1, status: 1 });
 
 const CallSession = mongoose.model("CallSession", callSessionSchema);
 export default CallSession;

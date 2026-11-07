@@ -136,12 +136,7 @@ const MobileDrawer = ({ authUser, isOpen, onClose }) => {
                 className="flex items-center gap-4 p-3 rounded-xl hover:bg-stone-900 text-white font-medium text-base transition w-full text-left"
               >
                 <IoEyeOutline className="w-5 h-5 text-sky-400" />
-                <span className="flex items-center gap-2">
-                  <span>Profile Views</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-400 font-semibold border border-sky-500/30">
-                    LinkedIn
-                  </span>
-                </span>
+                <span>Profile Views</span>
               </button>
             </li>
             <li>

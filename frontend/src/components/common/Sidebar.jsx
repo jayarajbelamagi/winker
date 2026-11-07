@@ -158,7 +158,7 @@ const Sidebar = () => {
 						<button
 							onClick={() => setShowProfileViews(true)}
 							className='flex gap-3.5 items-center hover:bg-stone-900 transition-all rounded-full duration-200 py-2.5 px-3 max-w-fit cursor-pointer group w-full text-left text-stone-200 hover:text-white'
-							title='Who viewed your profile (LinkedIn style)'
+							title='Who viewed your profile'
 						>
 							<div className='relative'>
 								<IoEyeOutline className='w-6 h-6 text-sky-400 group-hover:scale-110 transition' />

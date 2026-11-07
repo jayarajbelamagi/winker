@@ -343,7 +343,7 @@ const ProfilePage = () => {
                   <button
                     onClick={() => setShowProfileViews(true)}
                     className="flex items-center gap-1.5 text-sm text-sky-400 hover:text-sky-300 hover:underline transition font-medium"
-                    title="Who viewed your profile (LinkedIn style)"
+                    title="Who viewed your profile"
                   >
                     <IoEyeOutline className="w-4 h-4 text-sky-400" />
                     <span>
@@ -356,7 +356,7 @@ const ProfilePage = () => {
                 )}
               </div>
 
-              {/* LinkedIn-style Who Viewed Your Profile Card (Only for own profile) */}
+              {/* Who Viewed Your Profile Card (Only for own profile) */}
               {isMyProfile && (
                 <div
                   onClick={() => setShowProfileViews(true)}
@@ -367,12 +367,7 @@ const ProfilePage = () => {
                       👁️
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-white">Who viewed your profile</span>
-                        <span className="text-[10px] px-2 py-0.2 rounded-full bg-sky-500/20 text-sky-400 font-semibold border border-sky-500/30">
-                          LinkedIn style
-                        </span>
-                      </div>
+                      <span className="text-sm font-bold text-white block">Who viewed your profile</span>
                       <p className="text-xs text-stone-400 mt-0.5">
                         <strong className="text-sky-400 font-bold">
                           {profileViewsData?.uniqueViewersCount ?? user?.profileViewsCount ?? 0} people

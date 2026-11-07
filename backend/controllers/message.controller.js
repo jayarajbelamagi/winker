@@ -403,8 +403,23 @@ export const getConversations = async (req, res) => {
 			.populate("participants", "fullName username profileImg")
 			.populate("lastMessage.senderId", "username");
 
-		// Filter out self from each conversation participant list
+		// Format conversations (handling 1-on-1 chats and groups)
 		const formatted = conversations.map((conv) => {
+			if (conv.isGroup) {
+				return {
+					_id: conv._id,
+					isGroup: true,
+					groupName: conv.groupName || "Unnamed Group",
+					groupImg: conv.groupImg || "",
+					groupDescription: conv.groupDescription || "",
+					groupAdmin: conv.groupAdmin,
+					participants: conv.participants,
+					lastMessage: conv.lastMessage,
+					updatedAt: conv.updatedAt,
+					streak: null,
+				};
+			}
+
 			const otherParticipant =
 				conv.participants.find(
 					(p) => p._id.toString() !== currentUserId.toString()
@@ -412,7 +427,9 @@ export const getConversations = async (req, res) => {
 
 			return {
 				_id: conv._id,
+				isGroup: false,
 				otherUser: otherParticipant,
+				participants: conv.participants,
 				lastMessage: conv.lastMessage,
 				updatedAt: conv.updatedAt,
 				streak: computeStreakInfo(conv.streak),
@@ -561,13 +578,14 @@ export const getActiveCall = async (req, res) => {
 			}
 		);
 
-		// 1. Look for active ringing or connected call (matched by ObjectId or String ID)
+		// 1. Look for active ringing or connected call (matched by ObjectId, String ID, or group participant)
 		let call = await CallSession.findOne({
 			$or: [
 				{ receiverId: req.user._id },
 				{ "receiver._id": userIdStr },
 				{ callerId: req.user._id },
 				{ "caller._id": userIdStr },
+				{ participantIds: req.user._id },
 			],
 			status: { $in: ["ringing", "connected"] },
 		}).sort({ createdAt: -1 });
@@ -580,6 +598,7 @@ export const getActiveCall = async (req, res) => {
 					{ "receiver._id": userIdStr },
 					{ callerId: req.user._id },
 					{ "caller._id": userIdStr },
+					{ participantIds: req.user._id },
 				],
 				status: { $in: ["declined", "ended", "missed"] },
 				endedAt: { $gt: Date.now() - 8000 },
@@ -827,5 +846,417 @@ export const logCall = async (req, res) => {
 	} catch (error) {
 		console.error("Error in logCall:", error);
 		res.status(500).json({ error: "Failed to log call" });
+	}
+};
+
+// ==========================================
+// GROUP CHAT & GROUP CALLING METHODS (WHATSAPP STYLE)
+// ==========================================
+
+// CREATE GROUP CHAT
+export const createGroup = async (req, res) => {
+	try {
+		const currentUserId = req.user._id;
+		const { groupName, memberIds = [], groupImgBase64, groupDescription = "" } = req.body;
+
+		if (!groupName || !groupName.trim()) {
+			return res.status(400).json({ error: "Group name is required" });
+		}
+
+		if (!Array.isArray(memberIds) || memberIds.length === 0) {
+			return res.status(400).json({ error: "Please select at least one member to add to the group" });
+		}
+
+		// Ensure current user is in participants and eliminate duplicates
+		const participantsSet = new Set([currentUserId.toString(), ...memberIds.map((id) => id.toString())]);
+		const participants = Array.from(participantsSet);
+
+		let groupImg = "";
+		if (groupImgBase64) {
+			try {
+				if (groupImgBase64.startsWith("data:image/") || groupImgBase64.startsWith("http")) {
+					const uploadRes = await cloudinary.uploader.upload(groupImgBase64, {
+						folder: "winker_groups",
+						resource_type: "image",
+					});
+					groupImg = uploadRes.secure_url;
+				} else {
+					groupImg = groupImgBase64;
+				}
+			} catch (cloudErr) {
+				console.error("Group image upload error:", cloudErr.message);
+			}
+		}
+
+		// Create group conversation
+		const conversation = new Conversation({
+			participants,
+			isGroup: true,
+			groupName: groupName.trim(),
+			groupImg,
+			groupDescription: groupDescription.trim(),
+			groupAdmin: currentUserId,
+			messages: [],
+		});
+
+		// Create system initial message
+		const initialMessage = new Message({
+			senderId: currentUserId,
+			conversationId: conversation._id,
+			isGroupMessage: true,
+			isSystem: true,
+			text: `${req.user.fullName} created group "${groupName.trim()}"`,
+			seen: true,
+		});
+		await initialMessage.save();
+
+		conversation.messages.push(initialMessage._id);
+		conversation.lastMessage = {
+			text: initialMessage.text,
+			senderId: currentUserId,
+			seen: true,
+			createdAt: new Date(),
+		};
+
+		await conversation.save();
+
+		const populatedConv = await Conversation.findById(conversation._id)
+			.populate("participants", "fullName username profileImg")
+			.populate("groupAdmin", "fullName username profileImg");
+
+		res.status(201).json(populatedConv);
+	} catch (error) {
+		console.error("Error in createGroup:", error);
+		res.status(500).json({ error: error.message || "Failed to create group" });
+	}
+};
+
+// GET GROUP DETAILS
+export const getGroupDetails = async (req, res) => {
+	try {
+		const { conversationId } = req.params;
+		const currentUserId = req.user._id.toString();
+
+		const conversation = await Conversation.findOne({
+			_id: conversationId,
+			isGroup: true,
+			participants: currentUserId,
+		})
+			.populate("participants", "fullName username profileImg bio")
+			.populate("groupAdmin", "fullName username profileImg");
+
+		if (!conversation) {
+			return res.status(404).json({ error: "Group not found or you are not a member" });
+		}
+
+		res.status(200).json(conversation);
+	} catch (error) {
+		console.error("Error in getGroupDetails:", error);
+		res.status(500).json({ error: "Failed to fetch group details" });
+	}
+};
+
+// GET GROUP MESSAGES
+export const getGroupMessages = async (req, res) => {
+	try {
+		const { conversationId } = req.params;
+		const currentUserId = req.user._id.toString();
+
+		const conversation = await Conversation.findOne({
+			_id: conversationId,
+			isGroup: true,
+			participants: currentUserId,
+		}).populate({
+			path: "messages",
+			options: { sort: { createdAt: 1 } },
+			populate: {
+				path: "senderId",
+				select: "fullName username profileImg",
+			},
+		});
+
+		if (!conversation) {
+			return res.status(404).json({ error: "Group not found or you are not a member" });
+		}
+
+		res.status(200).json(conversation.messages || []);
+	} catch (error) {
+		console.error("Error in getGroupMessages:", error);
+		res.status(500).json({ error: "Failed to fetch group messages" });
+	}
+};
+
+// SEND GROUP MESSAGE
+export const sendGroupMessage = async (req, res) => {
+	try {
+		const currentUserId = req.user._id;
+		const { conversationId } = req.params;
+		const { text, imgBase64, callInfo } = req.body;
+
+		const conversation = await Conversation.findOne({
+			_id: conversationId,
+			isGroup: true,
+			participants: currentUserId,
+		});
+
+		if (!conversation) {
+			return res.status(404).json({ error: "Group not found or you are not a member" });
+		}
+
+		let imgUrl = null;
+		if (imgBase64) {
+			try {
+				if (imgBase64.startsWith("data:image/") || imgBase64.startsWith("http")) {
+					const uploadRes = await cloudinary.uploader.upload(imgBase64, {
+						folder: "winker_dms",
+						resource_type: "image",
+					});
+					imgUrl = uploadRes.secure_url;
+				} else {
+					imgUrl = imgBase64;
+				}
+			} catch (cloudErr) {
+				console.error("Group image upload error:", cloudErr.message);
+			}
+		}
+
+		const newMessage = new Message({
+			senderId: currentUserId,
+			conversationId: conversation._id,
+			isGroupMessage: true,
+			text: text?.trim() || (callInfo ? `${callInfo.callType === "video" ? "📹 Group video call" : "📞 Group voice call"}` : ""),
+			img: imgUrl,
+			callInfo: callInfo || undefined,
+			seen: false,
+		});
+
+		await newMessage.save();
+
+		conversation.messages.push(newMessage._id);
+		conversation.lastMessage = {
+			text: newMessage.text || "Photo",
+			senderId: currentUserId,
+			seen: false,
+			createdAt: new Date(),
+		};
+		await conversation.save();
+
+		const populatedMsg = await Message.findById(newMessage._id).populate(
+			"senderId",
+			"fullName username profileImg"
+		);
+
+		res.status(201).json(populatedMsg);
+	} catch (error) {
+		console.error("Error in sendGroupMessage:", error);
+		res.status(500).json({ error: error.message || "Failed to send group message" });
+	}
+};
+
+// ADD MEMBERS TO GROUP
+export const addGroupMembers = async (req, res) => {
+	try {
+		const currentUserId = req.user._id.toString();
+		const { conversationId } = req.params;
+		const { newMemberIds = [] } = req.body;
+
+		const conversation = await Conversation.findOne({
+			_id: conversationId,
+			isGroup: true,
+			participants: currentUserId,
+		});
+
+		if (!conversation) {
+			return res.status(404).json({ error: "Group not found or you are not a member" });
+		}
+
+		const existing = new Set(conversation.participants.map((p) => p.toString()));
+		const toAdd = newMemberIds.filter((id) => !existing.has(id.toString()));
+
+		if (toAdd.length === 0) {
+			return res.status(400).json({ error: "Selected users are already in the group" });
+		}
+
+		toAdd.forEach((id) => conversation.participants.push(id));
+
+		const addedUsers = await User.find({ _id: { $in: toAdd } }).select("fullName");
+		const names = addedUsers.map((u) => u.fullName).join(", ");
+
+		const sysMsg = new Message({
+			senderId: currentUserId,
+			conversationId: conversation._id,
+			isGroupMessage: true,
+			isSystem: true,
+			text: `${req.user.fullName} added ${names}`,
+			seen: true,
+		});
+		await sysMsg.save();
+
+		conversation.messages.push(sysMsg._id);
+		conversation.lastMessage = {
+			text: sysMsg.text,
+			senderId: currentUserId,
+			seen: true,
+			createdAt: new Date(),
+		};
+		await conversation.save();
+
+		const updatedConv = await Conversation.findById(conversation._id)
+			.populate("participants", "fullName username profileImg bio")
+			.populate("groupAdmin", "fullName username profileImg");
+
+		res.status(200).json(updatedConv);
+	} catch (error) {
+		console.error("Error in addGroupMembers:", error);
+		res.status(500).json({ error: "Failed to add group members" });
+	}
+};
+
+// LEAVE GROUP
+export const leaveGroup = async (req, res) => {
+	try {
+		const currentUserId = req.user._id.toString();
+		const { conversationId } = req.params;
+
+		const conversation = await Conversation.findOne({
+			_id: conversationId,
+			isGroup: true,
+			participants: currentUserId,
+		});
+
+		if (!conversation) {
+			return res.status(404).json({ error: "Group not found or you are not a member" });
+		}
+
+		conversation.participants = conversation.participants.filter(
+			(p) => p.toString() !== currentUserId
+		);
+
+		// If admin leaves, transfer admin to another member if any left
+		if (conversation.groupAdmin?.toString() === currentUserId && conversation.participants.length > 0) {
+			conversation.groupAdmin = conversation.participants[0];
+		}
+
+		const sysMsg = new Message({
+			senderId: req.user._id,
+			conversationId: conversation._id,
+			isGroupMessage: true,
+			isSystem: true,
+			text: `${req.user.fullName} left the group`,
+			seen: true,
+		});
+		await sysMsg.save();
+
+		conversation.messages.push(sysMsg._id);
+		conversation.lastMessage = {
+			text: sysMsg.text,
+			senderId: req.user._id,
+			seen: true,
+			createdAt: new Date(),
+		};
+		await conversation.save();
+
+		res.status(200).json({ success: true, message: "Left group successfully" });
+	} catch (error) {
+		console.error("Error in leaveGroup:", error);
+		res.status(500).json({ error: "Failed to leave group" });
+	}
+};
+
+// INITIATE GROUP CALL (VOICE OR VIDEO)
+export const initiateGroupCall = async (req, res) => {
+	try {
+		const currentUserId = req.user._id;
+		const { conversationId } = req.params;
+		const { callType = "audio" } = req.body;
+
+		const conversation = await Conversation.findOne({
+			_id: conversationId,
+			isGroup: true,
+			participants: currentUserId,
+		}).populate("participants", "fullName username profileImg");
+
+		if (!conversation) {
+			return res.status(404).json({ error: "Group not found or you are not a member" });
+		}
+
+		// Cancel any existing active calls by this caller
+		await CallSession.updateMany(
+			{
+				callerId: currentUserId,
+				status: { $in: ["ringing", "connected"] },
+			},
+			{
+				$set: { status: "ended", endedAt: Date.now() },
+			}
+		);
+
+		const otherParticipants = conversation.participants.filter(
+			(p) => p._id.toString() !== currentUserId.toString()
+		);
+
+		const callId = `call_grp_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+		const newCall = await CallSession.create({
+			callId,
+			callerId: currentUserId,
+			receiverId: otherParticipants[0]?._id || currentUserId,
+			isGroupCall: true,
+			groupName: conversation.groupName,
+			conversationId: conversation._id,
+			participantIds: conversation.participants.map((p) => p._id),
+			caller: {
+				_id: currentUserId.toString(),
+				fullName: req.user.fullName,
+				username: req.user.username,
+				profileImg: req.user.profileImg || "/avatar-placeholder.png",
+			},
+			receiver: {
+				_id: conversation._id.toString(),
+				fullName: conversation.groupName,
+				username: "group",
+				profileImg: conversation.groupImg || "/avatar-placeholder.png",
+			},
+			callType: callType === "video" ? "video" : "audio",
+			status: "ringing",
+			startedAt: Date.now(),
+		});
+
+		// Create notifications for group members
+		const notifs = otherParticipants.map((p) => ({
+			from: currentUserId,
+			to: p._id,
+			type: "call",
+		}));
+		await Notification.insertMany(notifs).catch(() => {});
+
+		// Log call message in group chat
+		const logMsg = new Message({
+			senderId: currentUserId,
+			conversationId: conversation._id,
+			isGroupMessage: true,
+			text: `${callType === "video" ? "📹 Group video call" : "📞 Group voice call"} started by ${req.user.fullName}`,
+			callInfo: {
+				callType,
+				status: "started",
+				isGroupCall: true,
+				groupName: conversation.groupName,
+			},
+			seen: true,
+		});
+		await logMsg.save();
+
+		conversation.messages.push(logMsg._id);
+		conversation.lastMessage = {
+			text: logMsg.text,
+			senderId: currentUserId,
+			seen: true,
+			createdAt: new Date(),
+		};
+		await conversation.save();
+
+		res.status(200).json({ call: newCall });
+	} catch (error) {
+		console.error("Error in initiateGroupCall:", error);
+		res.status(500).json({ error: error.message || "Failed to initiate group call" });
 	}
 };

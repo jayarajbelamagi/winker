@@ -58,11 +58,18 @@ export const CallProvider = ({ children, authUser }) => {
         const receiverId = (serverCall.receiver?._id || serverCall.receiverId)?.toString();
         const callerId = (serverCall.caller?._id || serverCall.callerId)?.toString();
 
-        const isReceiver = Boolean(myId && receiverId && myId === receiverId);
+        const isGroup = Boolean(serverCall.isGroupCall);
+        const isParticipant = Boolean(
+          isGroup && serverCall.participantIds?.some((pid) => (pid?._id || pid)?.toString() === myId)
+        );
+
+        const isReceiver =
+          Boolean(myId && receiverId && myId === receiverId) ||
+          (isGroup && isParticipant && myId !== callerId);
         const isCaller = Boolean(myId && callerId && myId === callerId);
 
         if (isReceiver && serverCall.status === "ringing") {
-          // Incoming call ringing for this receiver
+          // Incoming call ringing for this receiver / group member
           setIncomingCall(serverCall);
           setActiveCall(null);
         } else if (serverCall.status === "connected" && (isReceiver || isCaller)) {
@@ -70,7 +77,7 @@ export const CallProvider = ({ children, authUser }) => {
           setIncomingCall(null);
           setActiveCall(serverCall);
         } else if (isCaller && serverCall.status === "ringing") {
-          // Caller waiting for receiver
+          // Caller waiting for receiver(s)
           setActiveCall(serverCall);
           setIncomingCall(null);
         } else if (
@@ -113,8 +120,32 @@ export const CallProvider = ({ children, authUser }) => {
     }
   }, [incomingCall]);
 
-  // Caller initiates call
-  const startCall = async ({ partner, callType = "audio" }) => {
+  // Caller initiates call (1-on-1 or WhatsApp-style Group Call)
+  const startCall = async ({ partner, isGroup = false, group = null, callType = "audio" }) => {
+    // If starting a group call
+    if (isGroup || group) {
+      const convId = (group?._id || partner?._id || group?.id)?.toString();
+      if (!convId) {
+        toast.error("Group conversation not found");
+        return;
+      }
+      try {
+        const res = await apiFetch(`/api/messages/call/group/initiate/${convId}`, {
+          method: "POST",
+          body: JSON.stringify({ callType }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Failed to initiate group call");
+        }
+        setActiveCall(data.call);
+      } catch (err) {
+        toast.error(err.message || "Could not start group call");
+      }
+      return;
+    }
+
+    // 1-on-1 call
     const partnerId = (partner?._id || partner?.id)?.toString();
     if (!partnerId) {
       toast.error("Please select a recipient first");

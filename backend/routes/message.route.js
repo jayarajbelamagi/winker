@@ -16,6 +16,13 @@ import {
 	getSignal,
 	getCallHistory,
 	logCall,
+	createGroup,
+	getGroupDetails,
+	getGroupMessages,
+	sendGroupMessage,
+	addGroupMembers,
+	leaveGroup,
+	initiateGroupCall,
 } from "../controllers/message.controller.js";
 
 const router = express.Router();
@@ -24,6 +31,15 @@ const router = express.Router();
 router.get("/conversations", protectRoute, getConversations);
 router.get("/contacts", protectRoute, getEligibleContacts);
 router.get("/calls/history", protectRoute, getCallHistory);
+
+// Group Messaging & Calling (MUST precede parameterized routes)
+router.post("/group/create", protectRoute, createGroup);
+router.get("/group/:conversationId", protectRoute, getGroupDetails);
+router.get("/group/:conversationId/messages", protectRoute, getGroupMessages);
+router.post("/group/send/:conversationId", protectRoute, sendGroupMessage);
+router.post("/group/:conversationId/add", protectRoute, addGroupMembers);
+router.post("/group/:conversationId/leave", protectRoute, leaveGroup);
+router.post("/call/group/initiate/:conversationId", protectRoute, initiateGroupCall);
 
 // Active Call Session Signaling Routes (MUST precede /:otherUserId)
 router.get("/call/active", protectRoute, getActiveCall);

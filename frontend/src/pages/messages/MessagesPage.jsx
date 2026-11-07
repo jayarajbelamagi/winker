@@ -12,16 +12,19 @@ import {
   FiImage,
   FiSearch,
   FiLock,
-  FiCheck,
   FiCheckCircle,
   FiTrash2,
+  FiUsers,
 } from "react-icons/fi";
 import { FaArrowLeft, FaRegSmile } from "react-icons/fa";
 import { IoCloseSharp } from "react-icons/io5";
 import { RiChatNewFill } from "react-icons/ri";
+import { HiUserGroup } from "react-icons/hi2";
 
 import EmojiPicker from "../../components/common/EmojiPicker";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
+import CreateGroupModal from "../../components/chat/CreateGroupModal";
+import GroupInfoModal from "../../components/chat/GroupInfoModal";
 import { useCall } from "../../context/CallContext";
 
 // Format "Seen x minutes ago"
@@ -38,16 +41,37 @@ const formatSeenAgo = (dateStr) => {
   return `${days}d ago`;
 };
 
+// Sender name color generator for WhatsApp-style group messages
+const getSenderColor = (id = "") => {
+  const colors = [
+    "text-sky-400",
+    "text-emerald-400",
+    "text-amber-400",
+    "text-purple-400",
+    "text-rose-400",
+    "text-teal-400",
+    "text-cyan-400",
+  ];
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = id.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+};
+
 const MessagesPage = ({ authUser }) => {
   const { userId: routeUserId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [activePartner, setActivePartner] = useState(null);
+  const [activeGroup, setActiveGroup] = useState(null);
   const [inputText, setInputText] = useState("");
   const [selectedImg, setSelectedImg] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
+  const [showGroupInfoModal, setShowGroupInfoModal] = useState(false);
   const [searchFilter, setSearchFilter] = useState("");
 
   const { startCall: triggerGlobalCall } = useCall();
@@ -56,7 +80,7 @@ const MessagesPage = ({ authUser }) => {
   const fileInputRef = useRef(null);
   const textInputRef = useRef(null);
 
-  // 1. Fetch Conversations
+  // 1. Fetch Conversations (both 1-on-1 and Groups)
   const { data: conversations = [], isLoading: isLoadingConvs, refetch: refetchConvs } = useQuery({
     queryKey: ["conversations"],
     queryFn: async () => {
@@ -65,16 +89,16 @@ const MessagesPage = ({ authUser }) => {
       if (!res.ok) throw new Error(data.error || "Failed to load chats");
       return Array.isArray(data) ? data : [];
     },
-    refetchInterval: 5000, // Poll every 5s for live conversation updates
+    refetchInterval: 5000,
   });
 
-  // Active streak status with selected chat partner
+  // Active streak status with selected 1-on-1 partner
   const activeConversation = conversations.find(
-    (c) => c.otherUser?._id === activePartner?._id
+    (c) => !c.isGroup && c.otherUser?._id === activePartner?._id
   );
   const activeStreak = activeConversation?.streak;
 
-  // 2. Fetch Eligible Contacts (Mutuals vs Awaiting Follow-back)
+  // 2. Fetch Eligible Contacts (Mutuals)
   const { data: contactsData } = useQuery({
     queryKey: ["eligibleContacts"],
     queryFn: async () => {
@@ -91,20 +115,23 @@ const MessagesPage = ({ authUser }) => {
   // 3. Resolve active partner from URL parameter or selection
   useEffect(() => {
     if (routeUserId) {
-      // Find in conversations or contacts
-      const conv = conversations.find((c) => c.otherUser?._id === routeUserId);
+      const conv = conversations.find((c) => !c.isGroup && c.otherUser?._id === routeUserId);
       if (conv?.otherUser) {
         setActivePartner(conv.otherUser);
+        setActiveGroup(null);
       } else {
         const mutual = mutuals.find((m) => m._id === routeUserId);
         if (mutual) {
           setActivePartner(mutual);
+          setActiveGroup(null);
         } else {
-          // Fetch user details
           apiFetch(`/api/users/profile/${routeUserId}`)
             .then((r) => r.json())
             .then((u) => {
-              if (u && !u.error) setActivePartner(u);
+              if (u && !u.error) {
+                setActivePartner(u);
+                setActiveGroup(null);
+              }
             })
             .catch(() => {});
         }
@@ -112,11 +139,10 @@ const MessagesPage = ({ authUser }) => {
     }
   }, [routeUserId, conversations, mutuals]);
 
-  // 4. Fetch Messages for active partner
+  // 4a. Fetch 1-on-1 Messages
   const {
-    data: messages = [],
-    isLoading: isLoadingMessages,
-    refetch: refetchMessages,
+    data: directMessages = [],
+    isLoading: isLoadingDirect,
   } = useQuery({
     queryKey: ["messages", activePartner?._id],
     queryFn: async () => {
@@ -127,17 +153,47 @@ const MessagesPage = ({ authUser }) => {
       return Array.isArray(data) ? data : [];
     },
     enabled: Boolean(activePartner?._id),
-    refetchInterval: 3000, // Live poll every 3s for real-time chat & seen updates
+    refetchInterval: 3000,
   });
+
+  // 4b. Fetch Group Messages
+  const {
+    data: groupMessages = [],
+    isLoading: isLoadingGroup,
+  } = useQuery({
+    queryKey: ["groupMessages", activeGroup?._id],
+    queryFn: async () => {
+      if (!activeGroup?._id) return [];
+      const res = await apiFetch(`/api/messages/group/${activeGroup._id}/messages`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load group messages");
+      return Array.isArray(data) ? data : [];
+    },
+    enabled: Boolean(activeGroup?._id),
+    refetchInterval: 3000,
+  });
+
+  const messages = activeGroup ? groupMessages : directMessages;
+  const isLoadingMessages = activeGroup ? isLoadingGroup : isLoadingDirect;
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // 5. Send Message Mutation
+  // 5. Send Message Mutation (Handles both 1-on-1 and Group chats)
   const { mutate: sendMessageMutation, isPending: isSending } = useMutation({
     mutationFn: async ({ text, img, callInfo }) => {
+      if (activeGroup) {
+        const res = await apiFetch(`/api/messages/group/send/${activeGroup._id}`, {
+          method: "POST",
+          body: JSON.stringify({ text, imgBase64: img, callInfo }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to send message to group");
+        return data;
+      }
+
       if (!activePartner?._id) throw new Error("No recipient selected");
       const res = await apiFetch(`/api/messages/send/${activePartner._id}`, {
         method: "POST",
@@ -151,10 +207,17 @@ const MessagesPage = ({ authUser }) => {
       setInputText("");
       setSelectedImg(null);
       setShowEmojiPicker(false);
-      queryClient.setQueryData(["messages", activePartner?._id], (old) => [
-        ...(old || []),
-        newMsg,
-      ]);
+      if (activeGroup) {
+        queryClient.setQueryData(["groupMessages", activeGroup._id], (old) => [
+          ...(old || []),
+          newMsg,
+        ]);
+      } else {
+        queryClient.setQueryData(["messages", activePartner?._id], (old) => [
+          ...(old || []),
+          newMsg,
+        ]);
+      }
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
     },
     onError: (err) => {
@@ -162,7 +225,7 @@ const MessagesPage = ({ authUser }) => {
     },
   });
 
-  // 7. Delete Message Mutation
+  // 6. Delete Message Mutation
   const { mutate: deleteMessageMutation } = useMutation({
     mutationFn: async (messageId) => {
       const res = await apiFetch(`/api/messages/${messageId}`, {
@@ -173,9 +236,15 @@ const MessagesPage = ({ authUser }) => {
       return messageId;
     },
     onSuccess: (deletedId) => {
-      queryClient.setQueryData(["messages", activePartner?._id], (old) =>
-        (old || []).filter((m) => m._id !== deletedId)
-      );
+      if (activeGroup) {
+        queryClient.setQueryData(["groupMessages", activeGroup._id], (old) =>
+          (old || []).filter((m) => m._id !== deletedId)
+        );
+      } else {
+        queryClient.setQueryData(["messages", activePartner?._id], (old) =>
+          (old || []).filter((m) => m._id !== deletedId)
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
       toast.success("Message deleted");
     },
@@ -202,36 +271,54 @@ const MessagesPage = ({ authUser }) => {
     }
   };
 
+  // WhatsApp-style Voice & Video Calling (1-on-1 and Group calls)
   const startCall = (type) => {
-    if (!activePartner) return;
-    triggerGlobalCall({ partner: activePartner, callType: type });
+    if (activeGroup) {
+      triggerGlobalCall({ isGroup: true, group: activeGroup, callType: type });
+      return;
+    }
+    if (activePartner) {
+      triggerGlobalCall({ partner: activePartner, callType: type });
+    }
   };
 
-  // Find last sent message by authUser to show seen status
-  const lastAuthMessage = [...messages]
-    .reverse()
-    .find((m) => m.senderId === authUser?._id);
+  const isChatOpen = Boolean(activePartner || activeGroup);
+
+  // Find last sent message by authUser to show seen status (1-on-1 only)
+  const lastAuthMessage = !activeGroup
+    ? [...messages].reverse().find((m) => (m.senderId?._id || m.senderId) === authUser?._id)
+    : null;
 
   return (
     <div className="flex-1 min-w-0 w-full flex h-[calc(100dvh-3.5rem)] md:h-screen bg-black text-white overflow-hidden pb-0 border-r border-gray-800 relative">
-      {/* LEFT: Conversations List (Hidden on mobile if a partner is active, wide on desktop) */}
+      {/* LEFT: Conversations List (Hidden on mobile if a chat is active, wide on desktop) */}
       <div
         className={`w-full md:w-[350px] lg:w-[380px] xl:w-[410px] border-r border-gray-800 flex flex-col bg-stone-950/80 backdrop-blur-md flex-shrink-0 h-full ${
-          activePartner ? "hidden md:flex" : "flex"
+          isChatOpen ? "hidden md:flex" : "flex"
         }`}
       >
-        {/* Header */}
-        <div className="p-4 border-b border-gray-800 flex items-center justify-between sticky top-0 bg-stone-950/90 backdrop-blur z-10">
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            <span>Messages</span>
-          </h1>
-          <button
-            onClick={() => setShowNewChatModal(true)}
-            className="p-2 rounded-full bg-primary/20 text-primary hover:bg-primary hover:text-white transition"
-            title="New Chat (Mutual followers)"
-          >
-            <RiChatNewFill className="w-5 h-5" />
-          </button>
+        {/* Conversations Header with + New Chat & + New Group */}
+        <div className="p-3.5 border-b border-gray-800 flex items-center justify-between">
+          <h1 className="font-bold text-lg text-white">Messages</h1>
+          <div className="flex items-center gap-1.5">
+            {/* New Group Button (WhatsApp Style) */}
+            <button
+              onClick={() => setShowCreateGroupModal(true)}
+              className="p-2 rounded-full bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white transition"
+              title="Create New Group (WhatsApp style)"
+            >
+              <HiUserGroup className="w-5 h-5" />
+            </button>
+
+            {/* New 1-on-1 Chat Button */}
+            <button
+              onClick={() => setShowNewChatModal(true)}
+              className="p-2 rounded-full bg-primary/20 text-primary hover:bg-primary hover:text-white transition"
+              title="New Chat (Mutual followers)"
+            >
+              <RiChatNewFill className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Search Conversations */}
@@ -240,7 +327,7 @@ const MessagesPage = ({ authUser }) => {
             <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-500" />
             <input
               type="text"
-              placeholder="Search conversations..."
+              placeholder="Search chats & groups..."
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
               className="w-full bg-stone-900 border border-gray-800 rounded-full pl-9 pr-3 py-1.5 text-xs text-white placeholder-stone-500 focus:outline-none focus:border-primary"
@@ -261,31 +348,101 @@ const MessagesPage = ({ authUser }) => {
               </div>
               <p className="font-semibold text-white text-sm mb-1">No messages yet</p>
               <p className="text-xs text-stone-400 mb-4">
-                Start a direct conversation with anyone who follows you back!
+                Start a direct conversation or create a group with your mutual connections!
               </p>
-              <button
-                onClick={() => setShowNewChatModal(true)}
-                className="btn btn-primary btn-sm rounded-full text-white px-5"
-              >
-                + New Chat
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowNewChatModal(true)}
+                  className="btn btn-primary btn-sm rounded-full text-white px-4"
+                >
+                  + New Chat
+                </button>
+                <button
+                  onClick={() => setShowCreateGroupModal(true)}
+                  className="btn btn-outline btn-sm rounded-full text-emerald-400 border-emerald-500/40 hover:bg-emerald-500 hover:text-white px-4"
+                >
+                  + New Group
+                </button>
+              </div>
             </div>
           ) : (
             conversations
-              .filter((c) =>
-                c.otherUser?.fullName?.toLowerCase().includes(searchFilter.toLowerCase()) ||
-                c.otherUser?.username?.toLowerCase().includes(searchFilter.toLowerCase())
-              )
+              .filter((c) => {
+                if (c.isGroup) {
+                  return c.groupName?.toLowerCase().includes(searchFilter.toLowerCase());
+                }
+                return (
+                  c.otherUser?.fullName?.toLowerCase().includes(searchFilter.toLowerCase()) ||
+                  c.otherUser?.username?.toLowerCase().includes(searchFilter.toLowerCase())
+                );
+              })
               .map((conv) => {
+                // Render Group Conversation Item
+                if (conv.isGroup) {
+                  const isSelected = activeGroup?._id === conv._id;
+                  return (
+                    <div
+                      key={conv._id}
+                      onClick={() => {
+                        setActiveGroup(conv);
+                        setActivePartner(null);
+                        navigate("/messages");
+                      }}
+                      className={`flex items-center gap-3 p-3.5 cursor-pointer transition ${
+                        isSelected
+                          ? "bg-emerald-500/10 border-l-4 border-emerald-500"
+                          : "hover:bg-stone-900/60"
+                      }`}
+                    >
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-600 text-white flex items-center justify-center text-xl flex-shrink-0 shadow-md overflow-hidden">
+                        {conv.groupImg ? (
+                          <img src={conv.groupImg} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          "👥"
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="font-bold text-sm text-white truncate">
+                              {conv.groupName}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold flex-shrink-0">
+                              Group
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-stone-500 flex-shrink-0">
+                            {conv.lastMessage?.createdAt
+                              ? new Date(conv.lastMessage.createdAt).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : ""}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between mt-0.5">
+                          <p className="text-xs truncate text-stone-400">
+                            {conv.lastMessage?.text || `${conv.participants?.length || 0} members`}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Render 1-on-1 Conversation Item
                 const partner = conv.otherUser;
                 const isSelected = activePartner?._id === partner?._id;
-                const isUnread = conv.lastMessage?.senderId !== authUser?._id && !conv.lastMessage?.seen;
+                const isUnread =
+                  (conv.lastMessage?.senderId?._id || conv.lastMessage?.senderId) !== authUser?._id &&
+                  !conv.lastMessage?.seen;
 
                 return (
                   <div
                     key={conv._id}
                     onClick={() => {
                       setActivePartner(partner);
+                      setActiveGroup(null);
                       navigate(`/messages/${partner._id}`);
                     }}
                     className={`flex items-center gap-3 p-3.5 cursor-pointer transition ${
@@ -294,7 +451,7 @@ const MessagesPage = ({ authUser }) => {
                         : "hover:bg-stone-900/60"
                     }`}
                   >
-                    <div className="w-11 h-11 rounded-full overflow-hidden flex-shrink-0 border border-stone-700">
+                    <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 border border-stone-800">
                       <img
                         src={partner?.profileImg || "/avatar-placeholder.png"}
                         alt=""
@@ -359,13 +516,13 @@ const MessagesPage = ({ authUser }) => {
         </div>
       </div>
 
-      {/* RIGHT: Active Chat Conversation Area */}
+      {/* RIGHT: Active Chat / Group Conversation Area */}
       <div
         className={`flex-1 flex flex-col min-w-0 h-full bg-black relative ${
-          !activePartner ? "hidden md:flex items-center justify-center" : "flex"
+          !isChatOpen ? "hidden md:flex items-center justify-center" : "flex"
         }`}
       >
-        {!activePartner ? (
+        {!isChatOpen ? (
           /* Empty selection on desktop */
           <div className="text-center p-8 max-w-sm">
             <div className="w-16 h-16 rounded-full bg-stone-900 text-3xl flex items-center justify-center mx-auto mb-4">
@@ -373,24 +530,33 @@ const MessagesPage = ({ authUser }) => {
             </div>
             <h2 className="text-xl font-bold text-white mb-2">Select a conversation</h2>
             <p className="text-xs text-stone-400 mb-6">
-              Choose from your existing chats or start a new conversation with mutual connections.
+              Choose from your existing chats or start a new direct conversation or group.
             </p>
-            <button
-              onClick={() => setShowNewChatModal(true)}
-              className="btn btn-primary rounded-full btn-sm text-white px-5"
-            >
-              + New Message
-            </button>
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={() => setShowNewChatModal(true)}
+                className="btn btn-primary rounded-full btn-sm text-white px-5"
+              >
+                + New Chat
+              </button>
+              <button
+                onClick={() => setShowCreateGroupModal(true)}
+                className="btn btn-outline rounded-full btn-sm text-emerald-400 border-emerald-500/40 hover:bg-emerald-500 hover:text-white px-5"
+              >
+                + New Group
+              </button>
+            </div>
           </div>
         ) : (
           <>
-            {/* Active Chat Top Header */}
+            {/* Active Top Header: Group vs 1-on-1 */}
             <div className="p-3 border-b border-gray-800 bg-stone-950/90 backdrop-blur flex items-center justify-between sticky top-0 z-20">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-w-0">
                 {/* Mobile Back Button */}
                 <button
                   onClick={() => {
                     setActivePartner(null);
+                    setActiveGroup(null);
                     navigate("/messages");
                   }}
                   className="p-2 -ml-1 rounded-full hover:bg-stone-800 text-stone-300 md:hidden"
@@ -399,77 +565,123 @@ const MessagesPage = ({ authUser }) => {
                   <FaArrowLeft className="w-4 h-4" />
                 </button>
 
-                <Link
-                  to={`/profile/${activePartner.username}`}
-                  className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border border-stone-700"
-                >
-                  <img
-                    src={activePartner.profileImg || "/avatar-placeholder.png"}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                </Link>
+                {activeGroup ? (
+                  /* Group Header Avatar & Title */
+                  <>
+                    <div
+                      onClick={() => setShowGroupInfoModal(true)}
+                      className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-600 text-white flex items-center justify-center text-lg flex-shrink-0 cursor-pointer shadow-md overflow-hidden"
+                    >
+                      {activeGroup.groupImg ? (
+                        <img src={activeGroup.groupImg} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        "👥"
+                      )}
+                    </div>
 
-                <div className="flex flex-col min-w-0">
-                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      onClick={() => setShowGroupInfoModal(true)}
+                      className="flex flex-col min-w-0 cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-bold text-sm text-white hover:underline truncate">
+                          {activeGroup.groupName}
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold flex-shrink-0">
+                          Group
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-stone-400 truncate">
+                        {activeGroup.participants?.length || 0} members · Tap for info
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  /* 1-on-1 Header Avatar & Title */
+                  <>
                     <Link
                       to={`/profile/${activePartner.username}`}
-                      className="font-bold text-sm text-white hover:underline flex items-center gap-1.5 truncate"
+                      className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border border-stone-700"
                     >
-                      <span>{activePartner.fullName}</span>
+                      <img
+                        src={activePartner.profileImg || "/avatar-placeholder.png"}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
                     </Link>
-                    {activeStreak && activeStreak.count > 0 && (
-                      <div
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold flex-shrink-0 cursor-default select-none shadow-sm ${
-                          activeStreak.isExpiring
-                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse"
-                            : "bg-orange-500/20 text-orange-400 border border-orange-500/30"
-                        }`}
-                        title={
-                          activeStreak.isExpiring
-                            ? `Streak expires in ${activeStreak.hoursRemaining}h! Send a message or call to keep it alive.`
-                            : `${activeStreak.count} day streak! Interact every 24 hours to keep the flame burning.`
-                        }
-                      >
-                        <span>🔥</span>
-                        <span>{activeStreak.count}</span>
-                        {activeStreak.isExpiring && (
-                          <span className="flex items-center gap-0.5 text-[10px] text-amber-300 font-semibold">
-                            <span>⌛</span>
-                            <span>{activeStreak.hoursRemaining}h left</span>
-                          </span>
+
+                    <div className="flex flex-col min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Link
+                          to={`/profile/${activePartner.username}`}
+                          className="font-bold text-sm text-white hover:underline flex items-center gap-1.5 truncate"
+                        >
+                          <span>{activePartner.fullName}</span>
+                        </Link>
+                        {activeStreak && activeStreak.count > 0 && (
+                          <div
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold flex-shrink-0 cursor-default select-none shadow-sm ${
+                              activeStreak.isExpiring
+                                ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse"
+                                : "bg-orange-500/20 text-orange-400 border border-orange-500/30"
+                            }`}
+                            title={
+                              activeStreak.isExpiring
+                                ? `Streak expires in ${activeStreak.hoursRemaining}h! Send a message or call to keep it alive.`
+                                : `${activeStreak.count} day streak! Interact every 24 hours to keep the flame burning.`
+                            }
+                          >
+                            <span>🔥</span>
+                            <span>{activeStreak.count}</span>
+                            {activeStreak.isExpiring && (
+                              <span className="flex items-center gap-0.5 text-[10px] text-amber-300 font-semibold">
+                                <span>⌛</span>
+                                <span>{activeStreak.hoursRemaining}h left</span>
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
-                    )}
-                  </div>
-                  <span className="text-[11px] text-emerald-400 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span>Mutual Connection · Active now</span>
-                  </span>
-                </div>
+                      <span className="text-[11px] text-emerald-400 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span>Mutual Connection · Active now</span>
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
 
-              {/* Calling Action Buttons (Phone & Video) */}
+              {/* Action Buttons: Phone, Video, and Group Info */}
               <div className="flex items-center gap-1 sm:gap-2">
                 <button
                   onClick={() => startCall("audio")}
                   className="p-2.5 rounded-full text-stone-300 hover:text-white hover:bg-stone-800 transition active:scale-95"
-                  title="Audio Call"
+                  title={activeGroup ? "Group Voice Call (WhatsApp style)" : "Voice Call"}
                 >
-                  <FiPhone className="w-5 h-5" />
+                  <FiPhone className="w-5 h-5 text-emerald-400" />
                 </button>
 
                 <button
                   onClick={() => startCall("video")}
                   className="p-2.5 rounded-full text-stone-300 hover:text-white hover:bg-stone-800 transition active:scale-95"
-                  title="Video Call"
+                  title={activeGroup ? "Group Video Call (WhatsApp style)" : "Video Call"}
                 >
-                  <FiVideo className="w-5 h-5" />
+                  <FiVideo className="w-5 h-5 text-sky-400" />
                 </button>
+
+                {activeGroup && (
+                  <button
+                    onClick={() => setShowGroupInfoModal(true)}
+                    className="p-2.5 rounded-full text-stone-300 hover:text-white hover:bg-stone-800 transition active:scale-95"
+                    title="Group Settings & Members"
+                  >
+                    <FiUsers className="w-5 h-5 text-stone-300" />
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Streak Expiring Warning Banner (Snapchat 12h countdown warning) */}
+            {/* Streak Expiring Warning Banner for 1-on-1 */}
             {activeStreak && activeStreak.isExpiring && (
               <div className="mx-4 mt-2.5 mb-1 px-3.5 py-2 bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 border border-amber-500/35 rounded-2xl flex items-center justify-between text-xs text-amber-300 shadow-md animate-pulse">
                 <div className="flex items-center gap-2">
@@ -479,8 +691,8 @@ const MessagesPage = ({ authUser }) => {
                     <strong>{activeStreak.hoursRemaining} hours</strong>!
                   </span>
                 </div>
-                <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wide flex-shrink-0">
-                  Send a text or call to save it!
+                <span className="text-[11px] underline cursor-pointer" onClick={() => textInputRef.current?.focus()}>
+                  Save streak
                 </span>
               </div>
             )}
@@ -488,108 +700,147 @@ const MessagesPage = ({ authUser }) => {
             {/* Messages Scroll View */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3.5 scroll-smooth">
               <div className="max-w-4xl mx-auto w-full space-y-3.5 flex flex-col">
-              {isLoadingMessages ? (
-                <div className="flex justify-center py-12">
-                  <LoadingSpinner size="md" />
-                </div>
-              ) : messages.length === 0 ? (
-                <div className="py-16 text-center text-stone-500">
-                  <p className="text-sm font-semibold text-white mb-1">
-                    Say hello to {activePartner.fullName}! 👋
-                  </p>
-                  <p className="text-xs text-stone-400">
-                    You both follow each other. Messages are direct and private.
-                  </p>
-                </div>
-              ) : (
-                messages.map((msg, idx) => {
-                  const isMine = msg.senderId === authUser?._id;
-                  const isLastSent = lastAuthMessage?._id === msg._id;
-                  const isCallLog = Boolean(msg.callInfo?.callType);
+                {isLoadingMessages ? (
+                  <div className="flex justify-center py-12">
+                    <LoadingSpinner size="md" />
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="py-16 text-center text-stone-500">
+                    <p className="text-sm font-semibold text-white mb-1">
+                      {activeGroup
+                        ? `Welcome to ${activeGroup.groupName}! 🎉`
+                        : `Say hello to ${activePartner?.fullName}! 👋`}
+                    </p>
+                    <p className="text-xs text-stone-400">
+                      {activeGroup
+                        ? "Messages sent here are visible to all group members."
+                        : "You both follow each other. Messages are direct and private."}
+                    </p>
+                  </div>
+                ) : (
+                  messages.map((msg, idx) => {
+                    const senderObj = typeof msg.senderId === "object" ? msg.senderId : null;
+                    const senderIdStr = (senderObj?._id || msg.senderId)?.toString();
+                    const isMine = senderIdStr === authUser?._id?.toString();
+                    const isLastSent = lastAuthMessage?._id === msg._id;
+                    const isCallLog = Boolean(msg.callInfo?.callType);
 
-                  if (isCallLog) {
+                    // Group System Message (e.g. "John created group", "Alex joined")
+                    if (msg.isSystem) {
+                      return (
+                        <div key={msg._id || idx} className="flex justify-center my-2">
+                          <span className="text-[11px] text-stone-400 bg-stone-900/90 border border-stone-800 rounded-full px-3.5 py-1 font-medium shadow-sm">
+                            {msg.text}
+                          </span>
+                        </div>
+                      );
+                    }
+
+                    // Call Log Message
+                    if (isCallLog) {
+                      return (
+                        <div key={msg._id || idx} className="flex justify-center my-2">
+                          <div className="bg-stone-900 border border-stone-800 rounded-full px-4 py-1.5 text-xs text-stone-400 flex items-center gap-2 shadow-sm">
+                            <span>{msg.callInfo.callType === "video" ? "📹" : "📞"}</span>
+                            <span>{msg.text}</span>
+                            <span className="text-[10px] text-stone-500">
+                              {new Date(msg.createdAt).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    const senderName = senderObj?.fullName || senderObj?.username || "Member";
+                    const senderColorClass = getSenderColor(senderIdStr);
+
                     return (
-                      <div key={msg._id || idx} className="flex justify-center my-2">
-                        <div className="bg-stone-900 border border-stone-800 rounded-full px-4 py-1.5 text-xs text-stone-400 flex items-center gap-2">
-                          <span>{msg.callInfo.callType === "video" ? "📹" : "📞"}</span>
-                          <span>{msg.text}</span>
-                          <span className="text-[10px] text-stone-500">
+                      <div
+                        key={msg._id || idx}
+                        className={`flex flex-col group ${isMine ? "items-end" : "items-start"}`}
+                      >
+                        <div className={`flex items-start gap-2 ${isMine ? "flex-row-reverse" : "flex-row"}`}>
+                          {/* Sender Avatar for incoming group messages (WhatsApp style) */}
+                          {activeGroup && !isMine && (
+                            <div className="w-7 h-7 rounded-full overflow-hidden border border-stone-700 flex-shrink-0 mt-1">
+                              <img
+                                src={senderObj?.profileImg || "/avatar-placeholder.png"}
+                                alt=""
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          )}
+
+                          <div
+                            className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-md ${
+                              isMine
+                                ? "bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-tr-sm"
+                                : "bg-stone-900 border border-stone-800 text-stone-100 rounded-tl-sm"
+                            }`}
+                          >
+                            {/* WhatsApp-style Sender Name in Group Chat */}
+                            {activeGroup && !isMine && (
+                              <span className={`text-[11px] font-bold block mb-1 truncate ${senderColorClass}`}>
+                                ~ {senderName}
+                              </span>
+                            )}
+
+                            {msg.img && (
+                              <img
+                                src={msg.img}
+                                alt=""
+                                className="rounded-xl max-h-60 w-full object-cover mb-2 border border-black/20"
+                              />
+                            )}
+                            <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                          </div>
+
+                          {/* Delete Message Button */}
+                          {isMine && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm("Delete this message?")) {
+                                  deleteMessageMutation(msg._id);
+                                }
+                              }}
+                              className="opacity-60 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full hover:bg-stone-800 text-stone-400 hover:text-red-400 transition"
+                              title="Delete message"
+                            >
+                              <FiTrash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Timing and Seen Status */}
+                        <div className="flex items-center gap-1.5 mt-1 px-1 text-[10px] text-stone-500">
+                          <span>
                             {new Date(msg.createdAt).toLocaleTimeString([], {
                               hour: "2-digit",
                               minute: "2-digit",
                             })}
                           </span>
+                          {!activeGroup && isMine && isLastSent && (
+                            <span className="font-medium text-sky-400">
+                              {msg.seen ? (
+                                <span className="flex items-center gap-0.5">
+                                  <span className="font-bold">✓✓</span>
+                                  <span>Seen {formatSeenAgo(msg.seenAt)}</span>
+                                </span>
+                              ) : (
+                                <span>✓ Sent</span>
+                              )}
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
-                  }
-
-                  return (
-                    <div
-                      key={msg._id || idx}
-                      className={`flex flex-col group ${isMine ? "items-end" : "items-start"}`}
-                    >
-                      <div className={`flex items-center gap-1.5 ${isMine ? "flex-row-reverse" : "flex-row"}`}>
-                        <div
-                          className={`max-w-[80%] sm:max-w-[70%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-md ${
-                            isMine
-                              ? "bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-tr-sm"
-                              : "bg-stone-900 border border-stone-800 text-stone-100 rounded-tl-sm"
-                          }`}
-                        >
-                          {msg.img && (
-                            <img
-                              src={msg.img}
-                              alt=""
-                              className="rounded-xl max-h-60 w-full object-cover mb-2 border border-black/20"
-                            />
-                          )}
-                          <p className="whitespace-pre-wrap break-words">{msg.text}</p>
-                        </div>
-
-                        {/* Delete Message Button */}
-                        {isMine && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm("Delete this message?")) {
-                                deleteMessageMutation(msg._id);
-                              }
-                            }}
-                            className="opacity-60 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full hover:bg-stone-800 text-stone-400 hover:text-red-400 transition"
-                            title="Delete message"
-                          >
-                            <FiTrash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Seen / Delivery Status under message */}
-                      <div className="flex items-center gap-1.5 mt-1 px-1 text-[10px] text-stone-500">
-                        <span>
-                          {new Date(msg.createdAt).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </span>
-                        {isMine && isLastSent && (
-                          <span className="font-medium text-sky-400">
-                            {msg.seen ? (
-                              <span className="flex items-center gap-0.5">
-                                <span className="font-bold">✓✓</span>
-                                <span>Seen {formatSeenAgo(msg.seenAt)}</span>
-                              </span>
-                            ) : (
-                              <span>✓ Sent</span>
-                            )}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-              <div ref={messagesEndRef} />
+                  })
+                )}
+                <div ref={messagesEndRef} />
               </div>
             </div>
 
@@ -653,11 +904,15 @@ const MessagesPage = ({ authUser }) => {
                   </div>
                 )}
 
-                {/* Textarea */}
+                {/* Input Textarea */}
                 <input
                   ref={textInputRef}
                   type="text"
-                  placeholder={`Message @${activePartner.username}...`}
+                  placeholder={
+                    activeGroup
+                      ? `Message ${activeGroup.groupName}...`
+                      : `Message @${activePartner?.username}...`
+                  }
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   className="flex-1 bg-stone-900/90 border border-gray-700/80 rounded-full px-5 py-2.5 text-sm text-white placeholder-stone-500 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition"
@@ -678,7 +933,28 @@ const MessagesPage = ({ authUser }) => {
         )}
       </div>
 
-      {/* NEW CHAT MODAL (MUTUAL FOLLOWERS ENFORCEMENT) */}
+      {/* CREATE GROUP MODAL (WHATSAPP STYLE) */}
+      <CreateGroupModal
+        isOpen={showCreateGroupModal}
+        onClose={() => setShowCreateGroupModal(false)}
+        onGroupCreated={(newGroup) => {
+          setActiveGroup(newGroup);
+          setActivePartner(null);
+        }}
+      />
+
+      {/* GROUP INFO MODAL */}
+      <GroupInfoModal
+        isOpen={showGroupInfoModal}
+        onClose={() => setShowGroupInfoModal(false)}
+        group={activeGroup}
+        authUser={authUser}
+        onLeaveGroup={() => {
+          setActiveGroup(null);
+        }}
+      />
+
+      {/* 1-on-1 NEW CHAT MODAL */}
       {showNewChatModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
           <div className="w-full max-w-md bg-stone-900 border border-stone-800 rounded-2xl shadow-2xl flex flex-col max-h-[80vh] overflow-hidden">
@@ -715,6 +991,7 @@ const MessagesPage = ({ authUser }) => {
                         key={user._id}
                         onClick={() => {
                           setActivePartner(user);
+                          setActiveGroup(null);
                           setShowNewChatModal(false);
                           navigate(`/messages/${user._id}`);
                         }}
