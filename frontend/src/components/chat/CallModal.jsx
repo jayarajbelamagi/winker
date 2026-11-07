@@ -16,6 +16,8 @@ const ICE_SERVERS = {
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
     { urls: "stun:stun2.l.google.com:19302" },
+    { urls: "stun:stun3.l.google.com:19302" },
+    { urls: "stun:stun4.l.google.com:19302" },
   ],
 };
 
@@ -100,6 +102,27 @@ const playBusyTone = () => {
   } catch (e) {}
 };
 
+// Helper: Wait for ICE candidate gathering to complete so SDP contains all candidates
+const waitForIceGathering = (pc) => {
+  return new Promise((resolve) => {
+    if (!pc || pc.iceGatheringState === "complete") {
+      resolve();
+    } else {
+      const checkState = () => {
+        if (pc.iceGatheringState === "complete") {
+          pc.removeEventListener("icegatheringstatechange", checkState);
+          resolve();
+        }
+      };
+      pc.addEventListener("icegatheringstatechange", checkState);
+      setTimeout(() => {
+        pc.removeEventListener("icegatheringstatechange", checkState);
+        resolve();
+      }, 1500);
+    }
+  });
+};
+
 const CallModal = ({
   isOpen,
   callSession,
@@ -111,16 +134,21 @@ const CallModal = ({
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [facingMode, setFacingMode] = useState("user"); // "user" or "environment"
+  const [localStream, setLocalStream] = useState(null);
+  const [remoteStream, setRemoteStream] = useState(null);
   const [hasRemoteStream, setHasRemoteStream] = useState(false);
   const [isPiPSwapped, setIsPiPSwapped] = useState(false);
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const remoteAudioRef = useRef(null);
   const localStreamRef = useRef(null);
   const pcRef = useRef(null);
   const ringbackAudioRef = useRef(null);
   const timerRef = useRef(null);
   const signalingPollRef = useRef(null);
+  const remoteDescSetRef = useRef(false);
+  const addedCandidatesRef = useRef(new Set());
 
   const callType = callSession?.callType || "audio";
   const myIdStr = currentUserId?.toString();
@@ -131,16 +159,31 @@ const CallModal = ({
 
   // 1. Initialize Local Media Stream (Camera / Mic)
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((t) => t.stop());
+        localStreamRef.current = null;
+      }
+      setLocalStream(null);
+      setRemoteStream(null);
+      setHasRemoteStream(false);
+      return;
+    }
 
     setIsVideoOn(callType === "video");
     setIsMuted(false);
     setHasRemoteStream(false);
     setIsPiPSwapped(false);
+    remoteDescSetRef.current = false;
+    addedCandidatesRef.current.clear();
 
     if (navigator.mediaDevices?.getUserMedia) {
       const constraints = {
-        audio: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
         video:
           callType === "video"
             ? { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
@@ -151,13 +194,19 @@ const CallModal = ({
         .getUserMedia(constraints)
         .then((stream) => {
           localStreamRef.current = stream;
-          if (localVideoRef.current && callType === "video") {
-            localVideoRef.current.srcObject = stream;
-          }
+          setLocalStream(stream);
         })
         .catch((err) => {
-          console.warn("Could not access camera/mic:", err);
+          console.warn("Could not access camera/mic with ideal constraints:", err);
           setIsVideoOn(false);
+          // Fallback to basic audio
+          navigator.mediaDevices
+            ?.getUserMedia({ audio: true })
+            .then((stream) => {
+              localStreamRef.current = stream;
+              setLocalStream(stream);
+            })
+            .catch(() => {});
         });
     }
 
@@ -169,9 +218,11 @@ const CallModal = ({
     };
   }, [isOpen, callType, facingMode]);
 
-  // 2. WebRTC Peer Connection & Real-Time Signaling
+  // 2. WebRTC Peer Connection & Real-Time Signaling (Runs ONLY when localStream is ready!)
   useEffect(() => {
-    if (!isOpen || !callSession?.callId || callSession.status !== "connected") return;
+    if (!isOpen || !callSession?.callId || callSession.status !== "connected" || !localStream) {
+      return;
+    }
 
     let isMounted = true;
     const callId = callSession.callId;
@@ -180,72 +231,128 @@ const CallModal = ({
       const pc = new RTCPeerConnection(ICE_SERVERS);
       pcRef.current = pc;
 
-      // Add local media tracks to peer connection
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((track) => {
-          pc.addTrack(track, localStreamRef.current);
-        });
-      }
+      // Add all local tracks into the peer connection
+      localStream.getTracks().forEach((track) => {
+        pc.addTrack(track, localStream);
+      });
 
-      // Handle incoming remote media tracks
-      pc.ontrack = (event) => {
-        if (!isMounted) return;
-        if (event.streams && event.streams[0]) {
-          setHasRemoteStream(true);
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = event.streams[0];
-          }
+      // Trickle ICE candidate event
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          apiFetch(`/api/messages/call/signal/${callId}`, {
+            method: "POST",
+            body: JSON.stringify({
+              senderType: isCaller ? "caller" : "receiver",
+              candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate,
+            }),
+          }).catch(() => {});
         }
       };
 
-      // Negotiation: Caller creates Offer, Receiver creates Answer
+      // Handle incoming remote media tracks (Audio & Video)
+      pc.ontrack = (event) => {
+        console.log("WebRTC ontrack received stream:", event.streams);
+        if (!isMounted) return;
+        if (event.streams && event.streams[0]) {
+          const stream = event.streams[0];
+          setRemoteStream(stream);
+          setHasRemoteStream(true);
+        }
+      };
+
+      // Negotiation Logic
       if (isCaller) {
-        pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: callType === "video" })
+        // Caller creates offer with embedded candidates
+        pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: callType === "video",
+        })
           .then((offer) => pc.setLocalDescription(offer))
+          .then(() => waitForIceGathering(pc))
           .then(() => {
+            if (!isMounted) return;
             return apiFetch(`/api/messages/call/signal/${callId}`, {
               method: "POST",
-              body: JSON.stringify({ senderType: "caller", signalData: pc.localDescription }),
+              body: JSON.stringify({
+                senderType: "caller",
+                signalData: pc.localDescription,
+              }),
             });
           })
           .catch((err) => console.warn("WebRTC offer error:", err));
 
-        // Poll for Receiver's Answer
+        // Poll for Receiver's Answer and candidates
         signalingPollRef.current = setInterval(async () => {
-          if (!isMounted || pc.currentRemoteDescription) return;
+          if (!isMounted) return;
           try {
             const res = await apiFetch(`/api/messages/call/signal/${callId}`);
-            if (res.ok) {
-              const data = await res.json();
-              if (data?.receiverSignal && !pc.currentRemoteDescription) {
-                await pc.setRemoteDescription(new RTCSessionDescription(data.receiverSignal));
+            if (!res.ok) return;
+            const data = await res.json();
+
+            // Set remote answer
+            if (data?.receiverSignal && !remoteDescSetRef.current && pc.signalingState === "have-local-offer") {
+              remoteDescSetRef.current = true;
+              await pc.setRemoteDescription(new RTCSessionDescription(data.receiverSignal));
+            }
+
+            // Apply any trickle candidates from receiver
+            if (Array.isArray(data?.receiverCandidates) && pc.remoteDescription) {
+              for (const cand of data.receiverCandidates) {
+                const key = JSON.stringify(cand);
+                if (cand && !addedCandidatesRef.current.has(key)) {
+                  addedCandidatesRef.current.add(key);
+                  try {
+                    await pc.addIceCandidate(new RTCIceCandidate(cand));
+                  } catch (e) {}
+                }
               }
             }
           } catch (e) {}
-        }, 1200);
+        }, 1000);
       } else {
-        // Receiver polls for Caller's Offer, then responds with Answer
+        // Receiver polls for Caller's Offer, responds with Answer
         signalingPollRef.current = setInterval(async () => {
-          if (!isMounted || pc.currentRemoteDescription) return;
+          if (!isMounted) return;
           try {
             const res = await apiFetch(`/api/messages/call/signal/${callId}`);
-            if (res.ok) {
-              const data = await res.json();
-              if (data?.callerSignal && !pc.currentRemoteDescription) {
-                await pc.setRemoteDescription(new RTCSessionDescription(data.callerSignal));
-                const answer = await pc.createAnswer();
-                await pc.setLocalDescription(answer);
+            if (!res.ok) return;
+            const data = await res.json();
+
+            // Receive offer, create answer
+            if (data?.callerSignal && !remoteDescSetRef.current && pc.signalingState === "stable") {
+              remoteDescSetRef.current = true;
+              await pc.setRemoteDescription(new RTCSessionDescription(data.callerSignal));
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              await waitForIceGathering(pc);
+              if (isMounted) {
                 await apiFetch(`/api/messages/call/signal/${callId}`, {
                   method: "POST",
-                  body: JSON.stringify({ senderType: "receiver", signalData: answer }),
+                  body: JSON.stringify({
+                    senderType: "receiver",
+                    signalData: pc.localDescription,
+                  }),
                 });
               }
             }
+
+            // Apply any trickle candidates from caller
+            if (Array.isArray(data?.callerCandidates) && pc.remoteDescription) {
+              for (const cand of data.callerCandidates) {
+                const key = JSON.stringify(cand);
+                if (cand && !addedCandidatesRef.current.has(key)) {
+                  addedCandidatesRef.current.add(key);
+                  try {
+                    await pc.addIceCandidate(new RTCIceCandidate(cand));
+                  } catch (e) {}
+                }
+              }
+            }
           } catch (e) {}
-        }, 1200);
+        }, 1000);
       }
     } catch (err) {
-      console.warn("WebRTC initialization fallback:", err);
+      console.warn("WebRTC initialization error:", err);
     }
 
     return () => {
@@ -256,9 +363,31 @@ const CallModal = ({
         pcRef.current = null;
       }
     };
-  }, [isOpen, callSession?.status, callSession?.callId, isCaller, callType]);
+  }, [isOpen, callSession?.status, callSession?.callId, isCaller, callType, localStream]);
 
-  // 3. Handle Call Status Lifecycle (Ringing -> Connected -> Declined/Ended)
+  // 3. Audio & Video Element Stream Attachment Effects
+  useEffect(() => {
+    if (remoteAudioRef.current && remoteStream) {
+      remoteAudioRef.current.srcObject = remoteStream;
+      remoteAudioRef.current.play().catch((e) => console.warn("Remote audio play notice:", e));
+    }
+  }, [remoteStream]);
+
+  useEffect(() => {
+    const mainVideo = isPiPSwapped ? localVideoRef.current : remoteVideoRef.current;
+    const pipVideo = isPiPSwapped ? remoteVideoRef.current : localVideoRef.current;
+
+    if (mainVideo && (isPiPSwapped ? localStream : remoteStream)) {
+      mainVideo.srcObject = isPiPSwapped ? localStream : remoteStream;
+      mainVideo.play().catch(() => {});
+    }
+    if (pipVideo && (isPiPSwapped ? remoteStream : localStream)) {
+      pipVideo.srcObject = isPiPSwapped ? remoteStream : localStream;
+      pipVideo.play().catch(() => {});
+    }
+  }, [remoteStream, localStream, isPiPSwapped, isVideoOn, hasRemoteStream]);
+
+  // 4. Handle Call Status Lifecycle (Ringing -> Connected -> Declined/Ended)
   useEffect(() => {
     if (!isOpen || !callSession) return;
 
@@ -298,21 +427,18 @@ const CallModal = ({
         ringbackAudioRef.current = null;
       }
       playBusyTone();
-      toast.error("Call was declined");
-      const closeTimer = setTimeout(() => {
-        onEndCall && onEndCall(callSession.callId, true);
+      setTimeout(() => {
+        handleEndCallClick();
       }, 2000);
-      return () => clearTimeout(closeTimer);
     } else if (currentStatus === "ended" || currentStatus === "missed") {
       setCallStatus(currentStatus === "missed" ? "Missed Call" : "Call Ended");
       if (ringbackAudioRef.current) {
         ringbackAudioRef.current();
         ringbackAudioRef.current = null;
       }
-      const closeTimer = setTimeout(() => {
-        onEndCall && onEndCall(callSession.callId, true);
+      setTimeout(() => {
+        handleEndCallClick();
       }, 1500);
-      return () => clearTimeout(closeTimer);
     }
 
     return () => {
@@ -323,7 +449,7 @@ const CallModal = ({
     };
   }, [callSession?.status, callSession?.connectedAt, isOpen, isCaller]);
 
-  // 4. Cleanup
+  // 5. Cleanup
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -384,21 +510,26 @@ const CallModal = ({
 
   return (
     <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/90 backdrop-blur-2xl animate-in fade-in duration-200">
+      {/* Dedicated Global Audio Element (Plays remote partner's voice for both audio and video calls) */}
+      <audio ref={remoteAudioRef} autoPlay playsInline />
+
       <div className="relative w-full max-w-sm sm:max-w-lg h-full sm:h-[680px] bg-stone-950 border border-stone-800 sm:rounded-3xl shadow-2xl flex flex-col justify-between overflow-hidden">
         
         {/* ================= VIDEO CALL MAIN STAGE ================= */}
         {callType === "video" && (
           <div className="absolute inset-0 bg-stone-950 z-0 overflow-hidden">
-            {/* Remote Partner Video Stream */}
-            {isConnected && hasRemoteStream ? (
-              <video
-                ref={isPiPSwapped ? localVideoRef : remoteVideoRef}
-                autoPlay
-                playsInline
-                className={`w-full h-full object-cover ${isPiPSwapped ? "scale-x-[-1]" : ""}`}
-              />
-            ) : (
-              /* Fallback Animated Stage while video initializes */
+            {/* Remote Partner Video Stream - Always mounted in DOM so ref is never null */}
+            <video
+              ref={isPiPSwapped ? localVideoRef : remoteVideoRef}
+              autoPlay
+              playsInline
+              className={`w-full h-full object-cover ${isPiPSwapped ? "scale-x-[-1]" : ""} ${
+                isConnected && hasRemoteStream ? "block" : "hidden"
+              }`}
+            />
+
+            {/* Fallback Animated Stage while video initializes or before connection */}
+            {(!isConnected || !hasRemoteStream) && (
               <div className="w-full h-full flex flex-col items-center justify-center relative bg-gradient-to-b from-stone-900 via-stone-950 to-black px-6 text-center">
                 <div className="relative mb-6">
                   <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-stone-700 shadow-2xl">
@@ -423,7 +554,7 @@ const CallModal = ({
                 {isConnected && !hasRemoteStream && (
                   <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs animate-pulse">
                     <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span>Live Video Connected</span>
+                    <span>Connecting HD Video Feed...</span>
                   </div>
                 )}
               </div>
@@ -443,7 +574,7 @@ const CallModal = ({
                   ref={isPiPSwapped ? remoteVideoRef : localVideoRef}
                   autoPlay
                   playsInline
-                  muted
+                  muted={!isPiPSwapped}
                   className={`w-full h-full object-cover ${!isPiPSwapped ? "scale-x-[-1]" : ""}`}
                 />
               ) : (

@@ -3,6 +3,7 @@ import { protectRoute } from "../middleware/protectRoute.js";
 import {
 	sendMessage,
 	getMessages,
+	deleteMessage,
 	getConversations,
 	getEligibleContacts,
 	initiateCall,
@@ -38,5 +39,6 @@ router.post("/call/:receiverId", protectRoute, logCall);
 // Direct Messages
 router.get("/:otherUserId", protectRoute, getMessages);
 router.post("/send/:receiverId", protectRoute, sendMessage);
+router.delete("/:messageId", protectRoute, deleteMessage);
 
 export default router;

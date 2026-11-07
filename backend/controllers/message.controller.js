@@ -248,6 +248,68 @@ export const getMessages = async (req, res) => {
 	}
 };
 
+// DELETE A DIRECT MESSAGE
+export const deleteMessage = async (req, res) => {
+	try {
+		const { messageId } = req.params;
+		const currentUserId = req.user._id.toString();
+
+		const message = await Message.findById(messageId);
+		if (!message) {
+			return res.status(404).json({ error: "Message not found" });
+		}
+
+		// Only the sender or receiver of this message can delete it
+		if (
+			message.senderId.toString() !== currentUserId &&
+			message.receiverId.toString() !== currentUserId
+		) {
+			return res.status(403).json({ error: "Not authorized to delete this message" });
+		}
+
+		// Remove message reference from conversation
+		await Conversation.updateOne(
+			{ messages: messageId },
+			{ $pull: { messages: messageId } }
+		);
+
+		// If conversation's lastMessage was this message, update lastMessage
+		const conversation = await Conversation.findOne({
+			participants: { $all: [message.senderId, message.receiverId] },
+		}).populate({
+			path: "messages",
+			options: { sort: { createdAt: -1 }, limit: 1 },
+		});
+
+		if (conversation) {
+			const remainingLast = conversation.messages?.[0];
+			if (remainingLast) {
+				conversation.lastMessage = {
+					text: remainingLast.text || (remainingLast.img ? "Photo" : ""),
+					senderId: remainingLast.senderId,
+					seen: remainingLast.seen,
+					createdAt: remainingLast.createdAt,
+				};
+			} else {
+				conversation.lastMessage = {
+					text: "",
+					senderId: null,
+					seen: true,
+					createdAt: new Date(),
+				};
+			}
+			await conversation.save();
+		}
+
+		await Message.findByIdAndDelete(messageId);
+
+		res.status(200).json({ success: true, messageId });
+	} catch (error) {
+		console.error("Error in deleteMessage:", error);
+		res.status(500).json({ error: "Failed to delete message" });
+	}
+};
+
 // GET ALL USER CONVERSATIONS
 export const getConversations = async (req, res) => {
 	try {
@@ -572,20 +634,34 @@ export const endCall = async (req, res) => {
 export const exchangeSignal = async (req, res) => {
 	try {
 		const { callId } = req.params;
-		const { senderType, signalData } = req.body; // senderType: "caller" | "receiver"
+		const { senderType, signalData, candidate } = req.body; // senderType: "caller" | "receiver"
 
 		const call = await CallSession.findOne({ callId });
 		if (!call) return res.status(404).json({ error: "Call not found" });
 
-		if (senderType === "caller") {
-			call.callerSignal = signalData;
-		} else if (senderType === "receiver") {
-			call.receiverSignal = signalData;
+		if (signalData) {
+			if (senderType === "caller") {
+				call.callerSignal = signalData;
+			} else if (senderType === "receiver") {
+				call.receiverSignal = signalData;
+			}
 		}
+
+		if (candidate) {
+			if (senderType === "caller") {
+				if (!Array.isArray(call.callerCandidates)) call.callerCandidates = [];
+				call.callerCandidates.push(candidate);
+			} else if (senderType === "receiver") {
+				if (!Array.isArray(call.receiverCandidates)) call.receiverCandidates = [];
+				call.receiverCandidates.push(candidate);
+			}
+		}
+
 		await call.save();
 
 		res.status(200).json({ success: true });
 	} catch (error) {
+		console.error("Error in exchangeSignal:", error);
 		res.status(500).json({ error: "Failed to exchange signal" });
 	}
 };
@@ -599,6 +675,8 @@ export const getSignal = async (req, res) => {
 		res.status(200).json({
 			callerSignal: call.callerSignal,
 			receiverSignal: call.receiverSignal,
+			callerCandidates: call.callerCandidates || [],
+			receiverCandidates: call.receiverCandidates || [],
 		});
 	} catch (error) {
 		res.status(500).json({ error: "Failed to fetch signal" });

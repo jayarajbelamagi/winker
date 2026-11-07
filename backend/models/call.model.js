@@ -63,6 +63,14 @@ const callSessionSchema = new mongoose.Schema(
 			type: mongoose.Schema.Types.Mixed,
 			default: null,
 		},
+		callerCandidates: {
+			type: [mongoose.Schema.Types.Mixed],
+			default: [],
+		},
+		receiverCandidates: {
+			type: [mongoose.Schema.Types.Mixed],
+			default: [],
+		},
 	},
 	{ timestamps: true }
 );

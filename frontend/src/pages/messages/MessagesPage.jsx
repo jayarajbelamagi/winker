@@ -14,6 +14,7 @@ import {
   FiLock,
   FiCheck,
   FiCheckCircle,
+  FiTrash2,
 } from "react-icons/fi";
 import { FaArrowLeft, FaRegSmile } from "react-icons/fa";
 import { IoCloseSharp } from "react-icons/io5";
@@ -155,18 +156,25 @@ const MessagesPage = ({ authUser }) => {
     },
   });
 
-  // 6. Log Call Mutation
-  const { mutate: logCallMutation } = useMutation({
-    mutationFn: async ({ callType, duration, status }) => {
-      if (!activePartner?._id) return;
-      await apiFetch(`/api/messages/call/${activePartner._id}`, {
-        method: "POST",
-        body: JSON.stringify({ callType, duration, status }),
+  // 7. Delete Message Mutation
+  const { mutate: deleteMessageMutation } = useMutation({
+    mutationFn: async (messageId) => {
+      const res = await apiFetch(`/api/messages/${messageId}`, {
+        method: "DELETE",
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete message");
+      return messageId;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["messages", activePartner?._id] });
+    onSuccess: (deletedId) => {
+      queryClient.setQueryData(["messages", activePartner?._id], (old) =>
+        (old || []).filter((m) => m._id !== deletedId)
+      );
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      toast.success("Message deleted");
+    },
+    onError: (err) => {
+      toast.error(err.message || "Failed to delete message");
     },
   });
 
@@ -451,23 +459,41 @@ const MessagesPage = ({ authUser }) => {
                   return (
                     <div
                       key={msg._id || idx}
-                      className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}
+                      className={`flex flex-col group ${isMine ? "items-end" : "items-start"}`}
                     >
-                      <div
-                        className={`max-w-[80%] sm:max-w-[70%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-md ${
-                          isMine
-                            ? "bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-tr-sm"
-                            : "bg-stone-900 border border-stone-800 text-stone-100 rounded-tl-sm"
-                        }`}
-                      >
-                        {msg.img && (
-                          <img
-                            src={msg.img}
-                            alt=""
-                            className="rounded-xl max-h-60 w-full object-cover mb-2 border border-black/20"
-                          />
+                      <div className={`flex items-center gap-1.5 ${isMine ? "flex-row-reverse" : "flex-row"}`}>
+                        <div
+                          className={`max-w-[80%] sm:max-w-[70%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-md ${
+                            isMine
+                              ? "bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-tr-sm"
+                              : "bg-stone-900 border border-stone-800 text-stone-100 rounded-tl-sm"
+                          }`}
+                        >
+                          {msg.img && (
+                            <img
+                              src={msg.img}
+                              alt=""
+                              className="rounded-xl max-h-60 w-full object-cover mb-2 border border-black/20"
+                            />
+                          )}
+                          <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                        </div>
+
+                        {/* Delete Message Button */}
+                        {isMine && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm("Delete this message?")) {
+                                deleteMessageMutation(msg._id);
+                              }
+                            }}
+                            className="opacity-60 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full hover:bg-stone-800 text-stone-400 hover:text-red-400 transition"
+                            title="Delete message"
+                          >
+                            <FiTrash2 className="w-3.5 h-3.5" />
+                          </button>
                         )}
-                        <p className="whitespace-pre-wrap break-words">{msg.text}</p>
                       </div>
 
                       {/* Seen / Delivery Status under message */}
