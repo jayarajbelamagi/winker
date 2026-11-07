@@ -22,6 +22,12 @@ const conversationSchema = new mongoose.Schema(
 			seen: { type: Boolean, default: false },
 			createdAt: { type: Date, default: Date.now },
 		},
+		streak: {
+			count: { type: Number, default: 0 },
+			lastInteractionAt: { type: Date, default: null },
+			lastBumpedAt: { type: Date, default: null },
+			lastInteractionUser: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+		},
 	},
 	{ timestamps: true }
 );

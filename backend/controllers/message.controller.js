@@ -6,6 +6,85 @@ import CallSession from "../models/call.model.js";
 import Notification from "../models/notification.model.js";
 import { v2 as cloudinary } from "cloudinary";
 
+// HELPER: Update streak on text/call interaction
+export const recordStreakInteraction = (conversation, userId) => {
+	if (!conversation) return;
+	if (!conversation.streak) {
+		conversation.streak = { count: 0, lastInteractionAt: null, lastBumpedAt: null, lastInteractionUser: null };
+	}
+
+	const now = new Date();
+	const lastAt = conversation.streak.lastInteractionAt ? new Date(conversation.streak.lastInteractionAt) : null;
+	const lastBump = conversation.streak.lastBumpedAt ? new Date(conversation.streak.lastBumpedAt) : null;
+
+	if (!lastAt || !conversation.streak.count || conversation.streak.count === 0) {
+		// First interaction or restarted streak
+		conversation.streak.count = 1;
+		conversation.streak.lastInteractionAt = now;
+		conversation.streak.lastBumpedAt = now;
+		conversation.streak.lastInteractionUser = userId;
+		return;
+	}
+
+	const diffLastHours = (now.getTime() - lastAt.getTime()) / (1000 * 60 * 60);
+	const diffBumpHours = lastBump ? (now.getTime() - lastBump.getTime()) / (1000 * 60 * 60) : diffLastHours;
+
+	if (diffLastHours > 36) {
+		// Inactive for more than 36 hours: streak expired -> reset to 1
+		conversation.streak.count = 1;
+		conversation.streak.lastInteractionAt = now;
+		conversation.streak.lastBumpedAt = now;
+		conversation.streak.lastInteractionUser = userId;
+	} else if (diffBumpHours >= 20 || diffLastHours >= 24) {
+		// New 24h streak cycle (or saved within the 12h warning window!) -> increment count
+		conversation.streak.count += 1;
+		conversation.streak.lastInteractionAt = now;
+		conversation.streak.lastBumpedAt = now;
+		conversation.streak.lastInteractionUser = userId;
+	} else {
+		// Ongoing interaction within same 24h block -> extend lastInteractionAt
+		conversation.streak.lastInteractionAt = now;
+		conversation.streak.lastInteractionUser = userId;
+	}
+};
+
+// HELPER: Compute live streak status for client display
+export const computeStreakInfo = (streak) => {
+	if (!streak || !streak.count || !streak.lastInteractionAt) {
+		return { count: 0, status: "none", hoursRemaining: 0, isExpiring: false };
+	}
+
+	const now = Date.now();
+	const diffMs = now - new Date(streak.lastInteractionAt).getTime();
+	const diffHours = diffMs / (1000 * 60 * 60);
+
+	if (diffHours > 36) {
+		return { count: 0, status: "expired", hoursRemaining: 0, isExpiring: false };
+	}
+
+	if (diffHours > 24) {
+		// Within the 12-hour warning window (Hour 24 to 36)
+		const hoursRemaining = Math.max(1, Math.ceil(36 - diffHours));
+		return {
+			count: streak.count,
+			status: "expiring",
+			hoursRemaining,
+			isExpiring: true,
+			lastInteractionAt: streak.lastInteractionAt,
+		};
+	}
+
+	// Active streak (within 24 hours)
+	const hoursUntilWarning = Math.max(1, Math.ceil(24 - diffHours));
+	return {
+		count: streak.count,
+		status: "active",
+		hoursRemaining: hoursUntilWarning,
+		isExpiring: false,
+		lastInteractionAt: streak.lastInteractionAt,
+	};
+};
+
 // Helper: Internal call logger to DB
 const logCallInternal = async (senderId, receiverId, { callType, duration = 0, status = "completed" }) => {
 	try {
@@ -59,6 +138,7 @@ const logCallInternal = async (senderId, receiverId, { callType, duration = 0, s
 			seen: false,
 			createdAt: new Date(),
 		};
+		recordStreakInteraction(conversation, senderId);
 		await conversation.save();
 		return message;
 	} catch (err) {
@@ -179,6 +259,7 @@ export const sendMessage = async (req, res) => {
 			seen: false,
 			createdAt: new Date(),
 		};
+		recordStreakInteraction(conversation, senderId);
 		await conversation.save();
 
 		res.status(201).json(newMessage);
@@ -334,6 +415,7 @@ export const getConversations = async (req, res) => {
 				otherUser: otherParticipant,
 				lastMessage: conv.lastMessage,
 				updatedAt: conv.updatedAt,
+				streak: computeStreakInfo(conv.streak),
 			};
 		});
 

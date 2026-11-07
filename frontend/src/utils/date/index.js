@@ -2,6 +2,12 @@ export const formatPostDate = (createdAt) => {
 	const currentDate = new Date();
 	const createdAtDate = new Date(createdAt);
 
+	// If post is from a previous or different year, display full date with year like X (e.g. "Nov 12, 2025")
+	const isCurrentYear = createdAtDate.getFullYear() === currentDate.getFullYear();
+	if (!isCurrentYear) {
+		return createdAtDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+	}
+
 	const timeDifferenceInSeconds = Math.floor((currentDate - createdAtDate) / 1000);
 	const timeDifferenceInMinutes = Math.floor(timeDifferenceInSeconds / 60);
 	const timeDifferenceInHours = Math.floor(timeDifferenceInMinutes / 60);

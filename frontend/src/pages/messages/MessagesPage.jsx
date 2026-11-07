@@ -68,6 +68,12 @@ const MessagesPage = ({ authUser }) => {
     refetchInterval: 5000, // Poll every 5s for live conversation updates
   });
 
+  // Active streak status with selected chat partner
+  const activeConversation = conversations.find(
+    (c) => c.otherUser?._id === activePartner?._id
+  );
+  const activeStreak = activeConversation?.streak;
+
   // 2. Fetch Eligible Contacts (Mutuals vs Awaiting Follow-back)
   const { data: contactsData } = useQuery({
     queryKey: ["eligibleContacts"],
@@ -300,11 +306,31 @@ const MessagesPage = ({ authUser }) => {
                       />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-sm text-white truncate">
-                          {partner?.fullName}
-                        </span>
-                        <span className="text-[10px] text-stone-500">
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="font-bold text-sm text-white truncate">
+                            {partner?.fullName}
+                          </span>
+                          {conv.streak && conv.streak.count > 0 && (
+                            <span
+                              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold shadow-sm flex-shrink-0 ${
+                                conv.streak.isExpiring
+                                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse"
+                                  : "bg-orange-500/15 text-orange-400 border border-orange-500/30"
+                              }`}
+                              title={
+                                conv.streak.isExpiring
+                                  ? `Streak ending in ${conv.streak.hoursRemaining}h! Send a text or call to save it!`
+                                  : `${conv.streak.count}-day streak! Keep it going with daily interactions.`
+                              }
+                            >
+                              <span>🔥</span>
+                              <span>{conv.streak.count}</span>
+                              {conv.streak.isExpiring && <span>⌛</span>}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-stone-500 flex-shrink-0">
                           {conv.lastMessage?.createdAt
                             ? new Date(conv.lastMessage.createdAt).toLocaleTimeString([], {
                                 hour: "2-digit",
@@ -384,13 +410,38 @@ const MessagesPage = ({ authUser }) => {
                   />
                 </Link>
 
-                <div className="flex flex-col">
-                  <Link
-                    to={`/profile/${activePartner.username}`}
-                    className="font-bold text-sm text-white hover:underline flex items-center gap-1.5"
-                  >
-                    <span>{activePartner.fullName}</span>
-                  </Link>
+                <div className="flex flex-col min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Link
+                      to={`/profile/${activePartner.username}`}
+                      className="font-bold text-sm text-white hover:underline flex items-center gap-1.5 truncate"
+                    >
+                      <span>{activePartner.fullName}</span>
+                    </Link>
+                    {activeStreak && activeStreak.count > 0 && (
+                      <div
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold flex-shrink-0 cursor-default select-none shadow-sm ${
+                          activeStreak.isExpiring
+                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse"
+                            : "bg-orange-500/20 text-orange-400 border border-orange-500/30"
+                        }`}
+                        title={
+                          activeStreak.isExpiring
+                            ? `Streak expires in ${activeStreak.hoursRemaining}h! Send a message or call to keep it alive.`
+                            : `${activeStreak.count} day streak! Interact every 24 hours to keep the flame burning.`
+                        }
+                      >
+                        <span>🔥</span>
+                        <span>{activeStreak.count}</span>
+                        {activeStreak.isExpiring && (
+                          <span className="flex items-center gap-0.5 text-[10px] text-amber-300 font-semibold">
+                            <span>⌛</span>
+                            <span>{activeStreak.hoursRemaining}h left</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <span className="text-[11px] text-emerald-400 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                     <span>Mutual Connection · Active now</span>
@@ -417,6 +468,22 @@ const MessagesPage = ({ authUser }) => {
                 </button>
               </div>
             </div>
+
+            {/* Streak Expiring Warning Banner (Snapchat 12h countdown warning) */}
+            {activeStreak && activeStreak.isExpiring && (
+              <div className="mx-4 mt-2.5 mb-1 px-3.5 py-2 bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 border border-amber-500/35 rounded-2xl flex items-center justify-between text-xs text-amber-300 shadow-md animate-pulse">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">⌛</span>
+                  <span>
+                    Your <strong>🔥 {activeStreak.count}-day streak</strong> with {activePartner.fullName} is ending in{" "}
+                    <strong>{activeStreak.hoursRemaining} hours</strong>!
+                  </span>
+                </div>
+                <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wide flex-shrink-0">
+                  Send a text or call to save it!
+                </span>
+              </div>
+            )}
 
             {/* Messages Scroll View */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
