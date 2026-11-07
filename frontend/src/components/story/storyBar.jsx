@@ -31,6 +31,11 @@ const StoryBar = ({ authUser }) => {
 
   if (!authUser) return null;
 
+  // Find own active story group
+  const ownStoryGroup = storyGroups.find(
+    (g) => (g.user?._id || g.user)?.toString() === authUser._id.toString()
+  );
+
   // Filter groups for others vs own
   const otherStories = storyGroups.filter(
     (g) => (g.user?._id || g.user)?.toString() !== authUser._id.toString()
@@ -52,7 +57,11 @@ const StoryBar = ({ authUser }) => {
         ref={scrollerRef}
         className="flex gap-4 overflow-x-auto py-2 items-center px-1 sm:px-4 scrollbar-none scroll-smooth"
       >
-        <StoryUploader authUser={authUser} onUploadSuccess={fetchStories} />
+        <StoryUploader
+          authUser={authUser}
+          ownStoryGroup={ownStoryGroup}
+          onUploadSuccess={fetchStories}
+        />
         {otherStories.map((group, idx) => (
           <StoryCard
             key={group.user?._id || idx}

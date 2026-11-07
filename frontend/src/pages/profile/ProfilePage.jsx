@@ -15,6 +15,7 @@ import { FiSend, FiPhone, FiVideo, FiChevronRight } from "react-icons/fi";
 import { useCall } from "../../context/CallContext";
 import ProfileViewsModal from "../../components/profile/ProfileViewsModal";
 import StreakMilestonesModal from "../../components/profile/StreakMilestonesModal";
+import StoryViewer from "../../components/story/storyViewer";
 
 import { formatMemberSinceDate } from "../../utils/date";
 import useFollow from "../../hooks/useFollow";
@@ -29,6 +30,7 @@ const ProfilePage = () => {
   const [feedType, setFeedType] = useState("posts");
   const [showProfileViews, setShowProfileViews] = useState(false);
   const [showStreakModal, setShowStreakModal] = useState(false);
+  const [isViewingStory, setIsViewingStory] = useState(false);
 
   const coverImgRef = useRef(null);
   const profileImgRef = useRef(null);
@@ -54,6 +56,19 @@ const ProfilePage = () => {
       return data;
     },
   });
+
+  const { data: userStories, refetch: refetchStories } = useQuery({
+    queryKey: ["userStories", user?._id],
+    queryFn: async () => {
+      if (!user?._id) return [];
+      const res = await apiFetch(`/api/stories/user/${user._id}`);
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+    enabled: Boolean(user?._id),
+  });
+
+  const hasActiveStory = Boolean(userStories && userStories.length > 0);
 
   const isMyProfile = authUser?._id?.toString() === user?._id?.toString();
 
@@ -228,26 +243,46 @@ const ProfilePage = () => {
                 onChange={(e) => handleImgChange(e, "profileImg")}
               />
 
-              {/* PROFILE AVATAR */}
-              <div className="avatar absolute -bottom-16 left-4">
-                <div className="w-32 rounded-full relative group/avatar overflow-hidden border-4 border-black bg-black">
-                  <img
-                    src={profileImgPreview || user.profileImg || "/avatar-placeholder.png"}
-                    alt="avatar"
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = "/avatar-placeholder.png";
-                    }}
-                  />
-                  {isMyProfile && (
-                    <div
-                      className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 cursor-pointer transition"
-                      onClick={() => profileImgRef.current?.click()}
-                      title="Update profile picture"
-                    >
-                      <MdEdit className="w-6 h-6 text-white" />
-                    </div>
-                  )}
+              {/* PROFILE AVATAR WITH ACTIVE STORY RING */}
+              <div className="avatar absolute -bottom-16 left-4 z-10">
+                <div
+                  onClick={() => {
+                    if (hasActiveStory) {
+                      setIsViewingStory(true);
+                    } else if (isMyProfile) {
+                      profileImgRef.current?.click();
+                    }
+                  }}
+                  className={`w-32 h-32 rounded-full relative group/avatar overflow-hidden transition ${
+                    hasActiveStory
+                      ? "p-[3.5px] bg-gradient-to-tr from-pink-500 via-purple-500 to-amber-400 cursor-pointer animate-gradient shadow-2xl hover:scale-105"
+                      : "border-4 border-black bg-black"
+                  }`}
+                  title={hasActiveStory ? "Watch active story" : (isMyProfile ? "Update photo" : "")}
+                >
+                  <div className="w-full h-full rounded-full overflow-hidden bg-black relative">
+                    <img
+                      src={profileImgPreview || user.profileImg || "/avatar-placeholder.png"}
+                      alt="avatar"
+                      className="w-full h-full object-cover rounded-full"
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = "/avatar-placeholder.png";
+                      }}
+                    />
+                    {isMyProfile && (
+                      <div
+                        className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 cursor-pointer transition z-10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          profileImgRef.current?.click();
+                        }}
+                        title="Update profile picture"
+                      >
+                        <MdEdit className="w-6 h-6 text-white" />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -442,6 +477,18 @@ const ProfilePage = () => {
         onClose={() => setShowStreakModal(false)}
         maxStreak={7}
       />
+
+      {/* Story Viewer Modal */}
+      {isViewingStory && user?._id && (
+        <StoryViewer
+          userId={user._id}
+          authUser={authUser}
+          onClose={() => {
+            setIsViewingStory(false);
+            refetchStories();
+          }}
+        />
+      )}
     </div>
   );
 };

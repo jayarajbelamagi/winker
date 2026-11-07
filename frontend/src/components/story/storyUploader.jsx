@@ -1,14 +1,15 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { FaPlus, FaTimes } from "react-icons/fa";
 import { BsMusicNoteBeamed } from "react-icons/bs";
 import { toast } from "react-hot-toast";
 import { apiFetch } from "../../lib/api";
 import { compressImage, dataURLtoFile } from "../../utils/imageCompressor";
 import MusicSearchModal from "./MusicSearchModal";
+import StoryViewer from "./storyViewer";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB limit strictly enforced
 
-const StoryUploader = ({ authUser, onUploadSuccess }) => {
+const StoryUploader = ({ authUser, ownStoryGroup, onUploadSuccess }) => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [fileType, setFileType] = useState("image");
@@ -17,7 +18,17 @@ const StoryUploader = ({ authUser, onUploadSuccess }) => {
   const [showMusicModal, setShowMusicModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isViewingOwnStory, setIsViewingOwnStory] = useState(false);
   const fileInputRef = useRef(null);
+
+  const hasActiveStory = Boolean(ownStoryGroup && ownStoryGroup.stories?.length > 0);
+
+  // Listen for event from StoryViewer or elsewhere to add another story
+  useEffect(() => {
+    const handleOpenUploader = () => fileInputRef.current?.click();
+    window.addEventListener("stories:open-create-modal", handleOpenUploader);
+    return () => window.removeEventListener("stories:open-create-modal", handleOpenUploader);
+  }, []);
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
@@ -95,23 +106,44 @@ const StoryUploader = ({ authUser, onUploadSuccess }) => {
       {/* Circle Icon in Stories Bar */}
       <div className="flex flex-col items-center flex-shrink-0 cursor-pointer group">
         <div
-          onClick={() => fileInputRef.current?.click()}
-          className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full p-[2px] bg-stone-800 hover:bg-stone-700 transition"
-          title="Add your story"
+          onClick={() => {
+            if (hasActiveStory) {
+              setIsViewingOwnStory(true);
+            } else {
+              fileInputRef.current?.click();
+            }
+          }}
+          className={`relative w-16 h-16 sm:w-20 sm:h-20 rounded-full transition group-hover:scale-105 ${
+            hasActiveStory
+              ? "p-[2.5px] bg-gradient-to-tr from-pink-500 via-purple-500 to-amber-400 animate-gradient"
+              : "p-[2px] bg-stone-800 hover:bg-stone-700"
+          }`}
+          title={hasActiveStory ? "View your story" : "Add your story"}
         >
-          <div className="w-full h-full rounded-full overflow-hidden bg-black relative">
+          <div className="w-full h-full rounded-full overflow-hidden bg-black relative p-[1.5px]">
             <img
               src={authUser?.profileImg || "/avatar-placeholder.png"}
               alt="Your Story"
-              className="object-cover w-full h-full"
+              className="object-cover w-full h-full rounded-full"
             />
-            {/* Plus Badge */}
-            <div className="absolute bottom-0 right-0 w-5 h-5 bg-primary text-white rounded-full flex items-center justify-center border-2 border-black group-hover:scale-110 transition shadow-md">
+            {/* Plus Badge to Add Story directly */}
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                fileInputRef.current?.click();
+              }}
+              className="absolute bottom-0 right-0 w-5 h-5 bg-primary hover:bg-primary/90 text-white rounded-full flex items-center justify-center border-2 border-black hover:scale-125 transition shadow-md z-10"
+              title="Add to story"
+            >
               <FaPlus className="text-[10px]" />
             </div>
           </div>
         </div>
-        <span className="text-[11px] font-medium text-stone-300 mt-1 max-w-[70px] truncate">
+        <span
+          className={`text-[11px] font-medium mt-1 max-w-[70px] truncate text-center ${
+            hasActiveStory ? "text-white font-semibold" : "text-stone-300"
+          }`}
+        >
           Your Story
         </span>
         <input
@@ -122,6 +154,18 @@ const StoryUploader = ({ authUser, onUploadSuccess }) => {
           onChange={handleFileSelect}
         />
       </div>
+
+      {/* Story Viewer for Owner */}
+      {isViewingOwnStory && (
+        <StoryViewer
+          userId={authUser._id}
+          authUser={authUser}
+          onClose={() => {
+            setIsViewingOwnStory(false);
+            onUploadSuccess && onUploadSuccess();
+          }}
+        />
+      )}
 
       {/* Story Creator Modal with Music & 15s Preview */}
       {showCreateModal && (

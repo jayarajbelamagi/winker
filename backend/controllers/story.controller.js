@@ -56,6 +56,7 @@ export const createStory = async (req, res) => {
 
     const story = await Story.create({
       userId,
+      user: userId,
       mediaUrl: uploadRes.secure_url,
       type: type === "video" ? "video" : "image",
       caption: caption || "",
@@ -64,7 +65,9 @@ export const createStory = async (req, res) => {
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24-hour expiration
     });
 
-    const populated = await Story.findById(story._id).populate("user", "username fullName profileImg");
+    const populated = await Story.findById(story._id)
+      .populate("user", "username fullName profileImg")
+      .populate("userId", "username fullName profileImg");
     res.status(201).json(populated);
   } catch (err) {
     console.error("Error creating story:", err);
@@ -76,8 +79,12 @@ export const createStory = async (req, res) => {
 export const getUserStories = async (req, res) => {
   try {
     const { userId } = req.params;
-    const stories = await Story.find({ userId, expiresAt: { $gt: new Date() } })
+    const stories = await Story.find({
+      $or: [{ userId }, { user: userId }],
+      expiresAt: { $gt: new Date() },
+    })
       .populate("user", "username fullName profileImg")
+      .populate("userId", "username fullName profileImg")
       .populate("likes", "username fullName profileImg")
       .sort({ createdAt: 1 });
     res.json(stories);
@@ -94,22 +101,30 @@ export const getFeedStories = async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    const targetUserIds = [...new Set([user._id, ...user.following])];
+    const targetUserIds = [user._id, ...(user.following || [])];
 
     const rawStories = await Story.find({
-      userId: { $in: targetUserIds },
+      $or: [{ userId: { $in: targetUserIds } }, { user: { $in: targetUserIds } }],
       expiresAt: { $gt: new Date() },
     })
       .populate("user", "username fullName profileImg")
+      .populate("userId", "username fullName profileImg")
       .sort({ createdAt: 1 });
 
     // Group stories by user
     const groupedMap = new Map();
     for (const story of rawStories) {
-      const uId = story.userId.toString();
+      const u = (story.user && story.user._id)
+        ? story.user
+        : ((story.userId && story.userId._id)
+          ? story.userId
+          : (story.user || story.userId));
+      const uId = (u?._id || story.userId || story.user)?.toString();
+      if (!uId) continue;
+
       if (!groupedMap.has(uId)) {
         groupedMap.set(uId, {
-          user: story.user,
+          user: u,
           stories: [],
           hasUnviewed: false,
           latestCreatedAt: story.createdAt,
@@ -118,16 +133,22 @@ export const getFeedStories = async (req, res) => {
       const entry = groupedMap.get(uId);
       entry.stories.push(story);
       entry.latestCreatedAt = story.createdAt;
+
       // If current user hasn't viewed this story, mark hasUnviewed
-      if (!story.viewers.some((vId) => vId.toString() === userId.toString())) {
+      const hasViewed = (story.viewers || []).some(
+        (vId) => (vId?._id || vId)?.toString() === userId.toString()
+      );
+      if (!hasViewed) {
         entry.hasUnviewed = true;
       }
     }
 
     // Convert map to array: Put user's own stories first (if any), then sort others by unviewed status and latest date
     const groupedArray = Array.from(groupedMap.values()).sort((a, b) => {
-      const aIsSelf = a.user._id.toString() === userId.toString();
-      const bIsSelf = b.user._id.toString() === userId.toString();
+      const aId = (a.user?._id || a.user)?.toString();
+      const bId = (b.user?._id || b.user)?.toString();
+      const aIsSelf = aId === userId.toString();
+      const bIsSelf = bId === userId.toString();
       if (aIsSelf) return -1;
       if (bIsSelf) return 1;
       if (a.hasUnviewed && !b.hasUnviewed) return -1;
@@ -206,7 +227,8 @@ export const getStoryViewers = async (req, res) => {
     );
     if (!story) return res.status(404).json({ error: "Story not found" });
 
-    if (story.userId.toString() !== userId.toString()) {
+    const ownerId = (story.userId?._id || story.userId || story.user?._id || story.user)?.toString();
+    if (ownerId !== userId.toString()) {
       return res.status(403).json({ error: "Only the story owner can view the viewer list" });
     }
 
@@ -227,7 +249,8 @@ export const deleteStory = async (req, res) => {
     const story = await Story.findById(storyId);
     if (!story) return res.status(404).json({ error: "Story not found" });
 
-    if (story.userId.toString() !== userId.toString()) {
+    const ownerId = (story.userId?._id || story.userId || story.user?._id || story.user)?.toString();
+    if (ownerId !== userId.toString()) {
       return res.status(403).json({ error: "Not authorized" });
     }
 

@@ -11,6 +11,7 @@ import {
   IoVolumeMuteOutline,
 } from "react-icons/io5";
 import { BsMusicNoteBeamed } from "react-icons/bs";
+import { FaPlus } from "react-icons/fa";
 import { apiFetch } from "../../lib/api";
 
 const STORY_DURATION_MS = 15000; // 15 seconds per story
@@ -62,8 +63,12 @@ const StoryViewer = ({ userId, authUser, onClose }) => {
   }, [fetchStories]);
 
   const currentStory = stories[activeIndex];
-  const isOwner = currentStory?.userId?.toString() === authUser?._id?.toString() ||
-    currentStory?.user?._id?.toString() === authUser?._id?.toString();
+  const isOwner =
+    userId?.toString() === authUser?._id?.toString() ||
+    currentStory?.userId?.toString() === authUser?._id?.toString() ||
+    currentStory?.userId?._id?.toString() === authUser?._id?.toString() ||
+    currentStory?.user?._id?.toString() === authUser?._id?.toString() ||
+    currentStory?.user?.toString() === authUser?._id?.toString();
   const isLiked = currentStory?.likes?.some(
     (id) => (id?._id || id)?.toString() === authUser?._id?.toString()
   );
@@ -262,7 +267,10 @@ const StoryViewer = ({ userId, authUser, onClose }) => {
 
   if (!stories.length || !currentStory) return null;
 
-  const storyOwner = currentStory.user || currentStory.userId;
+  const storyOwner =
+    (currentStory.user && currentStory.user.fullName ? currentStory.user : null) ||
+    (currentStory.userId && currentStory.userId.fullName ? currentStory.userId : null) ||
+    (isOwner ? authUser : null);
 
   return (
     <div
@@ -341,6 +349,23 @@ const StoryViewer = ({ userId, authUser, onClose }) => {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Add Story Button for Owner */}
+            {isOwner && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClose();
+                  window.dispatchEvent(new Event("stories:open-create-modal"));
+                }}
+                className="flex items-center gap-1 bg-gradient-to-r from-pink-500 to-purple-600 hover:opacity-90 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-full transition shadow-md"
+                title="Add another story"
+              >
+                <FaPlus className="w-2.5 h-2.5" />
+                <span>Add</span>
+              </button>
+            )}
+
             {/* Audio Mute/Unmute */}
             {currentStory?.music?.previewUrl && (
               <button

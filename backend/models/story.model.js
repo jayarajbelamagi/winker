@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 
 const storySchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   mediaUrl: { type: String, required: true },
   type: { type: String, enum: ["image", "video"], default: "image" },
   caption: { type: String, default: "" },
@@ -21,12 +22,11 @@ const storySchema = new mongoose.Schema({
 // Auto-delete expired stories
 storySchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
-// Virtual to populate user info easily in frontend
-storySchema.virtual("user", {
-  ref: "User",
-  localField: "userId",
-  foreignField: "_id",
-  justOne: true,
+// Synchronize user and userId
+storySchema.pre("save", function (next) {
+  if (!this.user && this.userId) this.user = this.userId;
+  if (!this.userId && this.user) this.userId = this.user;
+  next();
 });
 
 storySchema.set("toObject", { virtuals: true });
