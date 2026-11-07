@@ -3,6 +3,25 @@
   to { width: 100%; }
 }
 
+@keyframes floatingHeart {
+  0% {
+    transform: translateY(0) scale(0.8);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-80px) scale(1.2);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(-160px) scale(1.5);
+    opacity: 0;
+  }
+}
+
+.animate-floating-heart {
+  animation: floatingHeart 1.5s ease-out forwards;
+}
+
 /* optional: hide scrollbar utility used in StoryBar */
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }

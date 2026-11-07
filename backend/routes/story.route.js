@@ -4,6 +4,8 @@ import {
   getUserStories,
   getFeedStories,
   markStoryViewed,
+  likeStory,
+  getStoryViewers,
   deleteStory,
 } from "../controllers/story.controller.js";
 import { protectRoute } from "../middleware/protectRoute.js";
@@ -11,16 +13,18 @@ import multer from "multer";
 
 const router = express.Router();
 
-// Configure multer for memory storage up to 50MB (handles camera photos and short videos)
+// Configure multer for memory storage up to 5MB strictly
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
 });
 
-router.post("/", protectRoute, upload.single("media"), createStory); // Only logged-in users
+router.post("/", protectRoute, upload.single("media"), createStory);
 router.get("/user/:userId", getUserStories);
 router.get("/feed/:userId", getFeedStories);
-router.post("/viewed", protectRoute, markStoryViewed); // Only logged-in users
-router.delete("/:storyId", protectRoute, deleteStory); // Only owner
+router.post("/viewed", protectRoute, markStoryViewed);
+router.post("/like/:storyId", protectRoute, likeStory);
+router.get("/viewers/:storyId", protectRoute, getStoryViewers);
+router.delete("/:storyId", protectRoute, deleteStory);
 
 export default router;

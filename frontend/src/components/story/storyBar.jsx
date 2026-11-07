@@ -4,7 +4,7 @@ import StoryUploader from "./storyUploader";
 import { apiFetch } from "../../lib/api";
 
 const StoryBar = ({ authUser }) => {
-  const [stories, setStories] = useState([]);
+  const [storyGroups, setStoryGroups] = useState([]);
   const scrollerRef = useRef(null);
 
   const fetchStories = useCallback(async () => {
@@ -12,7 +12,7 @@ const StoryBar = ({ authUser }) => {
     try {
       const res = await apiFetch(`/api/stories/feed/${authUser._id}`);
       const data = await res.json();
-      setStories(Array.isArray(data) ? data : []);
+      setStoryGroups(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Failed to fetch stories", err);
     }
@@ -29,30 +29,44 @@ const StoryBar = ({ authUser }) => {
     return () => window.removeEventListener("stories:refresh", onRefresh);
   }, [fetchStories]);
 
-  if (!authUser) return null; // Hide story bar if not logged in
+  if (!authUser) return null;
+
+  // Filter groups for others vs own
+  const otherStories = storyGroups.filter(
+    (g) => (g.user?._id || g.user)?.toString() !== authUser._id.toString()
+  );
 
   return (
     <div className="relative">
       <button
-        className="hidden sm:block absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-black/60 hover:bg-black/80 text-white px-2 py-1 rounded-full disabled:opacity-30 transition"
-        onClick={() => scrollerRef.current?.scrollBy({ left: -200, behavior: "smooth" })}
-        disabled={!stories.length}
+        type="button"
+        className="hidden sm:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-black/70 hover:bg-black text-white w-8 h-8 items-center justify-center rounded-full disabled:opacity-20 transition shadow-lg"
+        onClick={() => scrollerRef.current?.scrollBy({ left: -220, behavior: "smooth" })}
+        disabled={!otherStories.length}
         aria-label="Scroll left"
       >
         ‹
       </button>
 
-      <div ref={scrollerRef} className="flex gap-3 overflow-x-auto py-2 items-center px-1 sm:px-8 scrollbar-hide">
+      <div
+        ref={scrollerRef}
+        className="flex gap-4 overflow-x-auto py-2 items-center px-1 sm:px-4 scrollbar-none scroll-smooth"
+      >
         <StoryUploader authUser={authUser} onUploadSuccess={fetchStories} />
-        {stories.map((story) => (
-          <StoryCard key={story._id} story={story} authUser={authUser} />
+        {otherStories.map((group, idx) => (
+          <StoryCard
+            key={group.user?._id || idx}
+            storyGroup={group}
+            authUser={authUser}
+          />
         ))}
       </div>
 
       <button
-        className="hidden sm:block absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-black/60 hover:bg-black/80 text-white px-2 py-1 rounded-full disabled:opacity-30 transition"
-        onClick={() => scrollerRef.current?.scrollBy({ left: 200, behavior: "smooth" })}
-        disabled={!stories.length}
+        type="button"
+        className="hidden sm:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-black/70 hover:bg-black text-white w-8 h-8 items-center justify-center rounded-full disabled:opacity-20 transition shadow-lg"
+        onClick={() => scrollerRef.current?.scrollBy({ left: 220, behavior: "smooth" })}
+        disabled={!otherStories.length}
         aria-label="Scroll right"
       >
         ›

@@ -14,6 +14,7 @@ import { MdEdit } from "react-icons/md";
 import { FiSend, FiPhone, FiVideo, FiChevronRight } from "react-icons/fi";
 import { useCall } from "../../context/CallContext";
 import ProfileViewsModal from "../../components/profile/ProfileViewsModal";
+import StreakMilestonesModal from "../../components/profile/StreakMilestonesModal";
 
 import { formatMemberSinceDate } from "../../utils/date";
 import useFollow from "../../hooks/useFollow";
@@ -27,6 +28,7 @@ const ProfilePage = () => {
   const [isCompressing, setIsCompressing] = useState(false);
   const [feedType, setFeedType] = useState("posts");
   const [showProfileViews, setShowProfileViews] = useState(false);
+  const [showStreakModal, setShowStreakModal] = useState(false);
 
   const coverImgRef = useRef(null);
   const profileImgRef = useRef(null);
@@ -354,6 +356,16 @@ const ProfilePage = () => {
                     </span>
                   </button>
                 )}
+                <button
+                  onClick={() => setShowStreakModal(true)}
+                  className="flex items-center gap-1.5 text-sm text-orange-400 hover:text-orange-300 hover:underline transition font-medium"
+                  title="Streak Milestones"
+                >
+                  <span>🔥</span>
+                  <span>
+                    <strong className="text-white">Streak Badges</strong>
+                  </span>
+                </button>
               </div>
 
               {/* Who Viewed Your Profile Card (Only for own profile) */}
@@ -415,7 +427,7 @@ const ProfilePage = () => {
         <Posts feedType={feedType} username={username} userId={user?._id} />
       </div>
 
-      {/* LinkedIn-style Who Viewed Your Profile Modal */}
+      {/* Who Viewed Your Profile Modal */}
       {isMyProfile && (
         <ProfileViewsModal
           isOpen={showProfileViews}
@@ -423,6 +435,13 @@ const ProfilePage = () => {
           authUser={authUser}
         />
       )}
+
+      {/* Streak Milestones Modal */}
+      <StreakMilestonesModal
+        isOpen={showStreakModal}
+        onClose={() => setShowStreakModal(false)}
+        maxStreak={7}
+      />
     </div>
   );
 };

@@ -116,7 +116,7 @@ function App() {
         />
       )}
 
-      <div className="flex w-full relative min-h-screen pb-16 md:pb-0">
+      <div className="flex w-full justify-between relative min-h-screen pb-16 md:pb-0">
         {authUser && <Sidebar />}
         <Routes>
           <Route

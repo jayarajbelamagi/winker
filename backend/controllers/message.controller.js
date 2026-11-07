@@ -181,13 +181,21 @@ export const sendMessage = async (req, res) => {
 	try {
 		const senderId = req.user._id;
 		const { receiverId } = req.params;
-		const { text, img: imgBase64, callInfo } = req.body;
+		const {
+			text,
+			img: imgBase64,
+			audio: audioBase64,
+			audioDuration = 0,
+			mediaType,
+			isViewOnce = false,
+			callInfo,
+		} = req.body;
 
 		if (senderId.toString() === receiverId.toString()) {
 			return res.status(400).json({ error: "You cannot message yourself" });
 		}
 
-		if (!text?.trim() && !imgBase64 && !callInfo) {
+		if (!text?.trim() && !imgBase64 && !audioBase64 && !callInfo) {
 			return res.status(400).json({ error: "Message text or attachment required" });
 		}
 
@@ -210,19 +218,42 @@ export const sendMessage = async (req, res) => {
 		}
 
 		let imgUrl = null;
+		let audioUrl = null;
+		let detectedMediaType = mediaType || (audioBase64 ? "audio" : "text");
+
+		if (audioBase64) {
+			try {
+				if (audioBase64.startsWith("data:audio/") || audioBase64.startsWith("http")) {
+					const uploadRes = await cloudinary.uploader.upload(audioBase64, {
+						folder: "winker_audio",
+						resource_type: "video",
+					});
+					audioUrl = uploadRes.secure_url;
+					detectedMediaType = "audio";
+				} else {
+					audioUrl = audioBase64;
+					detectedMediaType = "audio";
+				}
+			} catch (cloudErr) {
+				console.error("Audio upload error in sendMessage:", cloudErr.message);
+			}
+		}
+
 		if (imgBase64) {
 			try {
-				if (imgBase64.startsWith("data:image/") || imgBase64.startsWith("http")) {
+				const isVid = imgBase64.startsWith("data:video/");
+				detectedMediaType = isVid ? "video" : "image";
+				if (imgBase64.startsWith("data:") || imgBase64.startsWith("http")) {
 					const uploadRes = await cloudinary.uploader.upload(imgBase64, {
 						folder: "winker_dms",
-						resource_type: "image",
+						resource_type: isVid ? "video" : "image",
 					});
 					imgUrl = uploadRes.secure_url;
 				} else {
 					imgUrl = imgBase64;
 				}
 			} catch (cloudErr) {
-				console.error("DM image upload error:", cloudErr.message);
+				console.error("DM media upload error:", cloudErr.message);
 			}
 		}
 
@@ -242,8 +273,17 @@ export const sendMessage = async (req, res) => {
 		const newMessage = new Message({
 			senderId,
 			receiverId,
-			text: text?.trim() || (callInfo ? `${callInfo.callType === "video" ? "📹 Video call" : "📞 Voice call"} (${callInfo.status || "ended"})` : ""),
+			text:
+				text?.trim() ||
+				(callInfo
+					? `${callInfo.callType === "video" ? "📹 Video call" : "📞 Voice call"} (${callInfo.status || "ended"})`
+					: ""),
 			img: imgUrl,
+			audio: audioUrl,
+			audioDuration: Number(audioDuration) || 0,
+			mediaType: detectedMediaType,
+			isViewOnce: Boolean(isViewOnce),
+			status: "delivered",
 			callInfo: callInfo || undefined,
 			seen: false,
 			seenAt: null,
@@ -254,7 +294,17 @@ export const sendMessage = async (req, res) => {
 		// Update conversation
 		conversation.messages.push(newMessage._id);
 		conversation.lastMessage = {
-			text: newMessage.text || "Photo",
+			text:
+				newMessage.text ||
+				(audioUrl
+					? "🎤 Voice message"
+					: isViewOnce
+					? "1️⃣ View once media"
+					: imgUrl
+					? detectedMediaType === "video"
+						? "📹 Video"
+						: "📷 Photo"
+					: ""),
 			senderId,
 			seen: false,
 			createdAt: new Date(),
@@ -286,7 +336,7 @@ export const getMessages = async (req, res) => {
 			return res.status(200).json([]);
 		}
 
-		// Automatically mark incoming unread messages as SEEN
+		// Automatically mark incoming unread messages as SEEN and READ
 		const now = new Date();
 		const unreadCount = await Message.countDocuments({
 			senderId: otherUserId,
@@ -302,7 +352,7 @@ export const getMessages = async (req, res) => {
 					seen: false,
 				},
 				{
-					$set: { seen: true, seenAt: now },
+					$set: { seen: true, seenAt: now, status: "read" },
 				}
 			);
 
@@ -313,16 +363,16 @@ export const getMessages = async (req, res) => {
 				conversation.lastMessage.seen = true;
 				await conversation.save();
 			}
-
-			// Re-fetch with updated seen flags
-			const updatedMessages = await Message.find({
-				_id: { $in: conversation.messages },
-			}).sort({ createdAt: 1 });
-
-			return res.status(200).json(updatedMessages);
 		}
 
-		res.status(200).json(conversation.messages);
+		// Re-fetch with updated flags and populated reactions
+		const updatedMessages = await Message.find({
+			_id: { $in: conversation.messages },
+		})
+			.populate("reactions.user", "fullName username profileImg")
+			.sort({ createdAt: 1 });
+
+		res.status(200).json(updatedMessages);
 	} catch (error) {
 		console.error("Error in getMessages:", error);
 		res.status(500).json({ error: "Failed to load messages" });
@@ -403,38 +453,46 @@ export const getConversations = async (req, res) => {
 			.populate("participants", "fullName username profileImg")
 			.populate("lastMessage.senderId", "username");
 
-		// Format conversations (handling 1-on-1 chats and groups)
-		const formatted = conversations.map((conv) => {
-			if (conv.isGroup) {
+		// Format conversations (handling 1-on-1 chats and groups, with pinned priority)
+		const formatted = conversations
+			.map((conv) => {
+				const isPinned = Boolean(
+					conv.pinnedBy?.some((id) => id.toString() === currentUserId.toString())
+				);
+
+				if (conv.isGroup) {
+					return {
+						_id: conv._id,
+						isGroup: true,
+						isPinned,
+						groupName: conv.groupName || "Unnamed Group",
+						groupImg: conv.groupImg || "",
+						groupDescription: conv.groupDescription || "",
+						groupAdmin: conv.groupAdmin,
+						participants: conv.participants,
+						lastMessage: conv.lastMessage,
+						updatedAt: conv.updatedAt,
+						streak: null,
+					};
+				}
+
+				const otherParticipant =
+					conv.participants.find(
+						(p) => p._id.toString() !== currentUserId.toString()
+					) || {};
+
 				return {
 					_id: conv._id,
-					isGroup: true,
-					groupName: conv.groupName || "Unnamed Group",
-					groupImg: conv.groupImg || "",
-					groupDescription: conv.groupDescription || "",
-					groupAdmin: conv.groupAdmin,
+					isGroup: false,
+					isPinned,
+					otherUser: otherParticipant,
 					participants: conv.participants,
 					lastMessage: conv.lastMessage,
 					updatedAt: conv.updatedAt,
-					streak: null,
+					streak: computeStreakInfo(conv.streak),
 				};
-			}
-
-			const otherParticipant =
-				conv.participants.find(
-					(p) => p._id.toString() !== currentUserId.toString()
-				) || {};
-
-			return {
-				_id: conv._id,
-				isGroup: false,
-				otherUser: otherParticipant,
-				participants: conv.participants,
-				lastMessage: conv.lastMessage,
-				updatedAt: conv.updatedAt,
-				streak: computeStreakInfo(conv.streak),
-			};
-		});
+			})
+			.sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0));
 
 		res.status(200).json(formatted);
 	} catch (error) {
@@ -969,10 +1027,16 @@ export const getGroupMessages = async (req, res) => {
 		}).populate({
 			path: "messages",
 			options: { sort: { createdAt: 1 } },
-			populate: {
-				path: "senderId",
-				select: "fullName username profileImg",
-			},
+			populate: [
+				{
+					path: "senderId",
+					select: "fullName username profileImg",
+				},
+				{
+					path: "reactions.user",
+					select: "fullName username profileImg",
+				},
+			],
 		});
 
 		if (!conversation) {
@@ -991,7 +1055,15 @@ export const sendGroupMessage = async (req, res) => {
 	try {
 		const currentUserId = req.user._id;
 		const { conversationId } = req.params;
-		const { text, imgBase64, callInfo } = req.body;
+		const {
+			text,
+			img: imgBase64,
+			audio: audioBase64,
+			audioDuration = 0,
+			mediaType,
+			isViewOnce = false,
+			callInfo,
+		} = req.body;
 
 		const conversation = await Conversation.findOne({
 			_id: conversationId,
@@ -1004,12 +1076,35 @@ export const sendGroupMessage = async (req, res) => {
 		}
 
 		let imgUrl = null;
+		let audioUrl = null;
+		let detectedMediaType = mediaType || (audioBase64 ? "audio" : "text");
+
+		if (audioBase64) {
+			try {
+				if (audioBase64.startsWith("data:audio/") || audioBase64.startsWith("http")) {
+					const uploadRes = await cloudinary.uploader.upload(audioBase64, {
+						folder: "winker_audio",
+						resource_type: "video",
+					});
+					audioUrl = uploadRes.secure_url;
+					detectedMediaType = "audio";
+				} else {
+					audioUrl = audioBase64;
+					detectedMediaType = "audio";
+				}
+			} catch (cloudErr) {
+				console.error("Group audio upload error:", cloudErr.message);
+			}
+		}
+
 		if (imgBase64) {
 			try {
-				if (imgBase64.startsWith("data:image/") || imgBase64.startsWith("http")) {
+				const isVid = imgBase64.startsWith("data:video/");
+				detectedMediaType = isVid ? "video" : "image";
+				if (imgBase64.startsWith("data:") || imgBase64.startsWith("http")) {
 					const uploadRes = await cloudinary.uploader.upload(imgBase64, {
 						folder: "winker_dms",
-						resource_type: "image",
+						resource_type: isVid ? "video" : "image",
 					});
 					imgUrl = uploadRes.secure_url;
 				} else {
@@ -1024,8 +1119,17 @@ export const sendGroupMessage = async (req, res) => {
 			senderId: currentUserId,
 			conversationId: conversation._id,
 			isGroupMessage: true,
-			text: text?.trim() || (callInfo ? `${callInfo.callType === "video" ? "📹 Group video call" : "📞 Group voice call"}` : ""),
+			text:
+				text?.trim() ||
+				(callInfo
+					? `${callInfo.callType === "video" ? "📹 Group video call" : "📞 Group voice call"}`
+					: ""),
 			img: imgUrl,
+			audio: audioUrl,
+			audioDuration: Number(audioDuration) || 0,
+			mediaType: detectedMediaType,
+			isViewOnce: Boolean(isViewOnce),
+			status: "delivered",
 			callInfo: callInfo || undefined,
 			seen: false,
 		});
@@ -1034,17 +1138,26 @@ export const sendGroupMessage = async (req, res) => {
 
 		conversation.messages.push(newMessage._id);
 		conversation.lastMessage = {
-			text: newMessage.text || "Photo",
+			text:
+				newMessage.text ||
+				(audioUrl
+					? "🎤 Voice message"
+					: isViewOnce
+					? "1️⃣ View once media"
+					: imgUrl
+					? detectedMediaType === "video"
+						? "📹 Video"
+						: "📷 Photo"
+					: ""),
 			senderId: currentUserId,
 			seen: false,
 			createdAt: new Date(),
 		};
 		await conversation.save();
 
-		const populatedMsg = await Message.findById(newMessage._id).populate(
-			"senderId",
-			"fullName username profileImg"
-		);
+		const populatedMsg = await Message.findById(newMessage._id)
+			.populate("senderId", "fullName username profileImg")
+			.populate("reactions.user", "fullName username profileImg");
 
 		res.status(201).json(populatedMsg);
 	} catch (error) {
@@ -1258,5 +1371,128 @@ export const initiateGroupCall = async (req, res) => {
 	} catch (error) {
 		console.error("Error in initiateGroupCall:", error);
 		res.status(500).json({ error: error.message || "Failed to initiate group call" });
+	}
+};
+
+// REACT TO MESSAGE (EMOJI REACTION)
+export const reactToMessage = async (req, res) => {
+	try {
+		const { messageId } = req.params;
+		const { emoji } = req.body;
+		const userId = req.user._id;
+
+		if (!emoji) return res.status(400).json({ error: "Emoji is required" });
+
+		const message = await Message.findById(messageId);
+		if (!message) return res.status(404).json({ error: "Message not found" });
+
+		if (!message.reactions) message.reactions = [];
+
+		const existingIndex = message.reactions.findIndex(
+			(r) => r.user.toString() === userId.toString()
+		);
+
+		if (existingIndex > -1) {
+			if (message.reactions[existingIndex].emoji === emoji) {
+				// Toggle off if same emoji tapped
+				message.reactions.splice(existingIndex, 1);
+			} else {
+				// Update to new emoji
+				message.reactions[existingIndex].emoji = emoji;
+			}
+		} else {
+			message.reactions.push({ user: userId, emoji });
+		}
+
+		await message.save();
+		const updated = await Message.findById(messageId).populate(
+			"reactions.user",
+			"fullName username profileImg"
+		);
+		res.status(200).json(updated.reactions);
+	} catch (error) {
+		console.error("Error in reactToMessage:", error);
+		res.status(500).json({ error: "Failed to react to message" });
+	}
+};
+
+// MARK VIEW ONCE MESSAGE AS OPENED
+export const markViewOnceOpened = async (req, res) => {
+	try {
+		const { messageId } = req.params;
+		const userId = req.user._id;
+
+		const message = await Message.findById(messageId);
+		if (!message) return res.status(404).json({ error: "Message not found" });
+
+		if (!message.isViewOnce) return res.status(400).json({ error: "Not a view once message" });
+
+		if (!message.viewedBy) message.viewedBy = [];
+		if (!message.viewedBy.some((id) => id.toString() === userId.toString())) {
+			message.viewedBy.push(userId);
+			await message.save();
+		}
+
+		res.status(200).json({ success: true, messageId });
+	} catch (error) {
+		console.error("Error in markViewOnceOpened:", error);
+		res.status(500).json({ error: "Failed to update view once status" });
+	}
+};
+
+// TOGGLE PIN CONVERSATION
+export const togglePinConversation = async (req, res) => {
+	try {
+		const { conversationId } = req.params;
+		const userId = req.user._id;
+
+		const conversation = await Conversation.findOne({
+			_id: conversationId,
+			participants: userId,
+		});
+		if (!conversation) return res.status(404).json({ error: "Conversation not found" });
+
+		if (!conversation.pinnedBy) conversation.pinnedBy = [];
+		const isPinned = conversation.pinnedBy.some((id) => id.toString() === userId.toString());
+
+		if (isPinned) {
+			conversation.pinnedBy = conversation.pinnedBy.filter(
+				(id) => id.toString() !== userId.toString()
+			);
+		} else {
+			conversation.pinnedBy.push(userId);
+		}
+		await conversation.save();
+
+		res.status(200).json({ success: true, isPinned: !isPinned });
+	} catch (error) {
+		console.error("Error in togglePinConversation:", error);
+		res.status(500).json({ error: "Failed to pin conversation" });
+	}
+};
+
+// TOGGLE STAR MESSAGE
+export const toggleStarMessage = async (req, res) => {
+	try {
+		const { messageId } = req.params;
+		const userId = req.user._id;
+
+		const message = await Message.findById(messageId);
+		if (!message) return res.status(404).json({ error: "Message not found" });
+
+		if (!message.starredBy) message.starredBy = [];
+		const isStarred = message.starredBy.some((id) => id.toString() === userId.toString());
+
+		if (isStarred) {
+			message.starredBy = message.starredBy.filter((id) => id.toString() !== userId.toString());
+		} else {
+			message.starredBy.push(userId);
+		}
+		await message.save();
+
+		res.status(200).json({ success: true, isStarred: !isStarred });
+	} catch (error) {
+		console.error("Error in toggleStarMessage:", error);
+		res.status(500).json({ error: "Failed to star message" });
 	}
 };

@@ -16,6 +16,13 @@ const conversationSchema = new mongoose.Schema(
 				default: [],
 			},
 		],
+		pinnedBy: [
+			{
+				type: mongoose.Schema.Types.ObjectId,
+				ref: "User",
+				default: [],
+			},
+		],
 		isGroup: {
 			type: Boolean,
 			default: false,

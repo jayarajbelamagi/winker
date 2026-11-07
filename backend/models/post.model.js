@@ -13,6 +13,26 @@ const postSchema = new mongoose.Schema(
 		img: {
 			type: String,
 		},
+		mediaType: {
+			type: String,
+			enum: ["image", "video"],
+			default: "image",
+		},
+		poll: {
+			question: { type: String, default: "" },
+			options: [
+				{
+					text: { type: String, required: true },
+					votes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+				},
+			],
+			expiresAt: { type: Date, default: null },
+		},
+		quotedPost: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "Post",
+			default: null,
+		},
 		is24hStory: {
 			type: Boolean,
 			default: false,

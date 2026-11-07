@@ -13,6 +13,7 @@ import storyRoutes from "./routes/story.route.js";
 import chatRoutes from "./routes/chat.route.js";
 import newsRoutes from "./routes/news.route.js";
 import messageRoutes from "./routes/message.route.js";
+import spaceRoutes from "./routes/space.route.js";
 
 import connectMongoDB from "./db/connectMongoDB.js";
 
@@ -98,6 +99,7 @@ app.use("/api/stories", storyRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/news", newsRoutes);
 app.use("/api/messages", messageRoutes);
+app.use("/api/spaces", spaceRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {

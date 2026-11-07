@@ -23,6 +23,10 @@ import {
 	addGroupMembers,
 	leaveGroup,
 	initiateGroupCall,
+	reactToMessage,
+	markViewOnceOpened,
+	togglePinConversation,
+	toggleStarMessage,
 } from "../controllers/message.controller.js";
 
 const router = express.Router();
@@ -31,6 +35,12 @@ const router = express.Router();
 router.get("/conversations", protectRoute, getConversations);
 router.get("/contacts", protectRoute, getEligibleContacts);
 router.get("/calls/history", protectRoute, getCallHistory);
+
+// WhatsApp-style enhancements: Pinning, Reactions, View Once, Starred
+router.post("/pin/:conversationId", protectRoute, togglePinConversation);
+router.post("/react/:messageId", protectRoute, reactToMessage);
+router.post("/view-once/:messageId", protectRoute, markViewOnceOpened);
+router.post("/star/:messageId", protectRoute, toggleStarMessage);
 
 // Group Messaging & Calling (MUST precede parameterized routes)
 router.post("/group/create", protectRoute, createGroup);

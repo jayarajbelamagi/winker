@@ -122,6 +122,26 @@ const Post = ({ post }) => {
     },
   });
 
+  // 📊 Vote on Poll
+  const { mutate: votePoll } = useMutation({
+    mutationFn: async (optionIndex) => {
+      const res = await apiFetch(`/api/posts/poll/${post._id}/vote`, {
+        method: "POST",
+        body: JSON.stringify({ optionIndex }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to submit vote");
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("Vote recorded!");
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
+  });
+
   // 💬 Comment on Post
   const { mutate: commentPost, isPending: isCommenting } = useMutation({
     mutationFn: async () => {
@@ -168,12 +188,19 @@ const Post = ({ post }) => {
   };
 
   const handlePostClick = (e) => {
-    // If the click is on an interactive element, let its own action execute
-    if (e.target.closest("a, button, input, textarea, svg, .modal, .no-nav")) {
+    if (e.target.closest("a, button, input, textarea, video, svg, .modal, .no-nav")) {
       return;
     }
     navigate(`/post/${post._id}`);
   };
+
+  const isVideoMedia =
+    post?.mediaType === "video" ||
+    (post?.img &&
+      (post.img.includes("/video/upload/") ||
+        post.img.endsWith(".mp4") ||
+        post.img.endsWith(".webm") ||
+        post.img.endsWith(".mov")));
 
   return (
     <div
@@ -196,35 +223,36 @@ const Post = ({ post }) => {
           />
         </Link>
       </div>
-      <div className="flex flex-col flex-1">
+
+      <div className="flex flex-col flex-1 min-w-0">
+        {/* Compact Author Header (Only Name & Time, no username) */}
         <div className="flex gap-2 items-center">
-          <Link to={`/profile/${postOwner?.username || ""}`} className="font-bold hover:underline">
+          <Link
+            to={`/profile/${postOwner?.username || ""}`}
+            className="text-xs font-semibold text-white/95 hover:underline truncate"
+          >
             {postOwner?.fullName || "User"}
           </Link>
-          <span className="text-gray-500 flex items-center gap-1.5 text-sm flex-wrap">
-            <Link to={`/profile/${postOwner?.username || ""}`}>
-              @{postOwner?.username || "user"}
-            </Link>
-            <span>·</span>
-            <span>{formattedDate}</span>
-            {post?.is24hStory && (
-              <span
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30"
-                title="24-Hour Story Post: Disappears automatically after 24 hours"
-              >
-                <span>⏳</span>
-                <span>24h Story</span>
-                <span className="text-[10px] text-amber-400 font-mono">
-                  ({getTimeRemaining(post.expiresAt)})
-                </span>
-              </span>
-            )}
+          <span className="text-gray-500 text-[11px] whitespace-nowrap">
+            · {formattedDate}
           </span>
+          {post?.is24hStory && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 ml-1"
+              title="24-Hour Story Post"
+            >
+              <span>⏳ 24h</span>
+              <span className="font-mono text-[9px] text-amber-400">
+                ({getTimeRemaining(post.expiresAt)})
+              </span>
+            </span>
+          )}
+
           {isMyPost && (
             <span className="flex justify-end flex-1">
               {!isDeleting ? (
                 <FaTrash
-                  className="cursor-pointer text-stone-500 hover:text-red-500 transition"
+                  className="cursor-pointer text-stone-500 hover:text-red-500 transition w-3.5 h-3.5"
                   onClick={handleDeletePost}
                   title="Delete post"
                 />
@@ -234,17 +262,143 @@ const Post = ({ post }) => {
             </span>
           )}
         </div>
-        <div className="flex flex-col gap-3 overflow-hidden mt-1">
-          <span className="text-[15px] leading-relaxed whitespace-pre-wrap">{post?.text}</span>
+
+        {/* Post Text (Prominent focal point) */}
+        <div className="flex flex-col gap-2.5 overflow-hidden mt-1.5">
+          {post?.text && (
+            <span className="text-[15px] sm:text-[16px] text-stone-100 leading-relaxed whitespace-pre-wrap break-words">
+              {post.text}
+            </span>
+          )}
+
+          {/* Interactive Poll Display */}
+          {post?.poll?.options?.length > 0 && (
+            <div
+              className="border border-stone-800 rounded-2xl p-3 bg-stone-900/40 my-1 space-y-2 max-w-lg no-nav"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="font-semibold text-xs sm:text-sm text-stone-200">
+                {post.poll.question || "Poll"}
+              </div>
+
+              {(() => {
+                const totalVotes = post.poll.options.reduce(
+                  (sum, opt) => sum + (opt.votes?.length || 0),
+                  0
+                );
+                const userVoteIndex = post.poll.options.findIndex((opt) =>
+                  opt.votes?.some(
+                    (id) => (id?._id || id)?.toString() === authUser?._id?.toString()
+                  )
+                );
+                const hasVoted = userVoteIndex > -1;
+                const isExpired =
+                  post.poll.expiresAt && new Date() > new Date(post.poll.expiresAt);
+
+                return (
+                  <div className="space-y-2 mt-2">
+                    {post.poll.options.map((opt, optIdx) => {
+                      const votesCount = opt.votes?.length || 0;
+                      const percent =
+                        totalVotes > 0 ? Math.round((votesCount / totalVotes) * 100) : 0;
+                      const isUserChoice = userVoteIndex === optIdx;
+
+                      if (hasVoted || isExpired) {
+                        return (
+                          <div
+                            key={optIdx}
+                            className="relative h-9 rounded-xl overflow-hidden bg-stone-800/60 border border-stone-700/50 flex items-center px-3"
+                          >
+                            <div
+                              className={`absolute left-0 top-0 bottom-0 ${
+                                isUserChoice ? "bg-primary/35" : "bg-stone-700/30"
+                              } transition-all duration-500`}
+                              style={{ width: `${percent}%` }}
+                            />
+                            <div className="relative z-10 flex justify-between w-full text-xs font-medium text-white">
+                              <span className="flex items-center gap-1.5 truncate">
+                                {opt.text}
+                                {isUserChoice && (
+                                  <span className="text-primary font-bold">✓</span>
+                                )}
+                              </span>
+                              <span className="font-mono text-stone-300 ml-2">{percent}%</span>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <button
+                          key={optIdx}
+                          type="button"
+                          onClick={() => votePoll(optIdx)}
+                          className="w-full text-left py-2 px-3.5 rounded-xl border border-primary/40 hover:bg-primary/10 text-primary text-xs font-semibold transition"
+                        >
+                          {opt.text}
+                        </button>
+                      );
+                    })}
+
+                    <div className="text-[11px] text-stone-500 pt-1 flex justify-between items-center">
+                      <span>
+                        {totalVotes} {totalVotes === 1 ? "vote" : "votes"}
+                      </span>
+                      <span>{isExpired ? "Final results" : "Active poll"}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Media Display (Photo or Video Player up to 5MB) */}
           {post?.img && (
-            <img
-              src={post.img}
-              className="max-h-96 w-full object-contain rounded-xl border border-gray-800 bg-black/40"
-              alt=""
-              onError={(e) => {
-                e.target.style.display = "none";
+            <div className="rounded-xl overflow-hidden border border-gray-800 bg-black/40 my-1">
+              {isVideoMedia ? (
+                <video
+                  src={post.img}
+                  controls
+                  playsInline
+                  className="max-h-96 w-full object-contain bg-black"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <img
+                  src={post.img}
+                  className="max-h-96 w-full object-contain"
+                  alt=""
+                  onError={(e) => {
+                    e.target.style.display = "none";
+                  }}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Quoted Post Card */}
+          {post?.quotedPost && (
+            <div
+              className="border border-stone-800 rounded-2xl p-3 bg-stone-900/30 hover:bg-stone-900/60 transition cursor-pointer my-1"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/post/${post.quotedPost._id}`);
               }}
-            />
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <img
+                  src={post.quotedPost.user?.profileImg || "/avatar-placeholder.png"}
+                  alt=""
+                  className="w-5 h-5 rounded-full object-cover"
+                />
+                <span className="text-xs font-bold text-white">
+                  {post.quotedPost.user?.fullName}
+                </span>
+              </div>
+              <p className="text-xs text-stone-300 line-clamp-3 whitespace-pre-wrap">
+                {post.quotedPost.text}
+              </p>
+            </div>
           )}
         </div>
 
@@ -254,9 +408,7 @@ const Post = ({ post }) => {
           <div
             className="flex gap-1.5 items-center cursor-pointer group"
             onClick={() =>
-              document
-                .getElementById("comments_modal" + post._id)
-                ?.showModal()
+              document.getElementById("comments_modal" + post._id)?.showModal()
             }
           >
             <FaRegComment className="w-4 h-4 group-hover:text-sky-400 transition" />
@@ -288,7 +440,7 @@ const Post = ({ post }) => {
             </span>
           </div>
 
-          {/* Bookmark (Like X) */}
+          {/* Bookmark */}
           <div
             className="flex gap-1.5 items-center group cursor-pointer"
             onClick={handleBookmarkPost}
@@ -311,7 +463,7 @@ const Post = ({ post }) => {
           </div>
         </div>
 
-        {/* Comment Modal */}
+        {/* Comments Dialog */}
         <dialog
           id={`comments_modal${post._id}`}
           className="modal border-none outline-none"
@@ -340,9 +492,8 @@ const Post = ({ post }) => {
                   </div>
                   <div className="flex flex-col">
                     <div className="flex items-center gap-1">
-                      <span className="font-bold text-sm text-white">{c.user?.fullName}</span>
-                      <span className="text-gray-500 text-xs">
-                        @{c.user?.username}
+                      <span className="font-bold text-sm text-white">
+                        {c.user?.fullName}
                       </span>
                     </div>
                     <div className="text-sm text-stone-300 mt-0.5">{c.text}</div>
@@ -350,22 +501,22 @@ const Post = ({ post }) => {
                 </div>
               ))}
             </div>
+
             <form
-              className="flex gap-2 items-center mt-4 border-t border-gray-700 pt-3"
               onSubmit={handlePostComment}
+              className="flex gap-2 items-center mt-4 border-t border-gray-600 pt-2"
             >
               <textarea
-                className="textarea w-full p-2 rounded-lg text-sm resize-none border focus:outline-none border-gray-700 bg-black/50 text-white"
-                placeholder="Post your reply..."
+                className="textarea w-full p-1 rounded text-md resize-none border focus:outline-none border-gray-800 bg-black text-white"
+                placeholder="Add a comment..."
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                rows={1}
               />
               <button
                 className="btn btn-primary rounded-full btn-sm text-white px-4"
-                disabled={isCommenting || !comment.trim()}
+                disabled={isCommenting}
               >
-                {isCommenting ? <LoadingSpinner size="sm" /> : "Reply"}
+                {isCommenting ? <LoadingSpinner size="md" /> : "Post"}
               </button>
             </form>
           </div>

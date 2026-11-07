@@ -2,18 +2,32 @@ import Story from "../models/story.model.js";
 import User from "../models/user.model.js";
 import { v2 as cloudinary } from "cloudinary";
 
-// Create a story
+const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB limit strictly enforced
+
+// Create a story (photo or video up to 5MB, 15s max, optional music)
 export const createStory = async (req, res) => {
   try {
-    const userId = req.user?._id; // get userId from JWT middleware
+    const userId = req.user?._id;
     if (!userId) return res.status(401).json({ error: "User not logged in" });
 
     const { type, caption } = req.body;
+    let music = null;
+    if (req.body.music) {
+      try {
+        music = typeof req.body.music === "string" ? JSON.parse(req.body.music) : req.body.music;
+      } catch (e) {
+        music = null;
+      }
+    }
 
-    // Support both multipart upload (via multer memoryStorage) and base64/url in body
+    // Enforce 5MB limit check
+    if (req.file && req.file.size > MAX_FILE_SIZE_BYTES) {
+      return res.status(400).json({ error: "File size exceeds 5MB limit. Please select a smaller file." });
+    }
+
+    // Support multipart buffer or base64/url
     let uploadRes;
     if (req.file && req.file.buffer) {
-      // Faster: stream buffer to Cloudinary instead of base64 encoding
       uploadRes = await new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
           {
@@ -28,6 +42,10 @@ export const createStory = async (req, res) => {
         stream.end(req.file.buffer);
       });
     } else if (req.body.media) {
+      // Check approximate base64 size (base64 length * 0.75)
+      if (typeof req.body.media === "string" && req.body.media.length * 0.75 > MAX_FILE_SIZE_BYTES + 500000) {
+        return res.status(400).json({ error: "File size exceeds 5MB limit. Please select a smaller file." });
+      }
       uploadRes = await cloudinary.uploader.upload(req.body.media, {
         resource_type: type === "video" ? "video" : "image",
         folder: "stories",
@@ -39,49 +57,87 @@ export const createStory = async (req, res) => {
     const story = await Story.create({
       userId,
       mediaUrl: uploadRes.secure_url,
-      type,
-      caption,
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // expire after 24h
+      type: type === "video" ? "video" : "image",
+      caption: caption || "",
+      music: music || { title: "", artist: "", previewUrl: "", artwork: "" },
+      duration: 15, // strictly 15s
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24-hour expiration
     });
 
-    res.status(201).json(story);
+    const populated = await Story.findById(story._id).populate("user", "username fullName profileImg");
+    res.status(201).json(populated);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to create story" });
+    console.error("Error creating story:", err);
+    res.status(500).json({ error: err.message || "Failed to create story" });
   }
 };
 
-// Get all stories of a user
+// Get all active stories of a specific user
 export const getUserStories = async (req, res) => {
   try {
     const { userId } = req.params;
     const stories = await Story.find({ userId, expiresAt: { $gt: new Date() } })
-      .populate("user", "username profileImg")
-      .sort({ createdAt: -1 });
+      .populate("user", "username fullName profileImg")
+      .populate("likes", "username fullName profileImg")
+      .sort({ createdAt: 1 });
     res.json(stories);
   } catch (err) {
-    console.error(err);
+    console.error("Error fetching user stories:", err);
     res.status(500).json({ error: "Failed to fetch stories" });
   }
 };
 
-// Get stories from followed users (feed)
+// Get feed stories (followed users + logged-in user), grouped by user
 export const getFeedStories = async (req, res) => {
   try {
     const { userId } = req.params;
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    // Include user's own stories in the feed
-    const followedPlusSelf = [...new Set([user._id, ...user.following])];
+    const targetUserIds = [...new Set([user._id, ...user.following])];
 
-    const stories = await Story.find({ userId: { $in: followedPlusSelf }, expiresAt: { $gt: new Date() } })
-      .populate("user", "username profileImg")
-      .sort({ createdAt: -1 });
+    const rawStories = await Story.find({
+      userId: { $in: targetUserIds },
+      expiresAt: { $gt: new Date() },
+    })
+      .populate("user", "username fullName profileImg")
+      .sort({ createdAt: 1 });
 
-    res.json(stories);
+    // Group stories by user
+    const groupedMap = new Map();
+    for (const story of rawStories) {
+      const uId = story.userId.toString();
+      if (!groupedMap.has(uId)) {
+        groupedMap.set(uId, {
+          user: story.user,
+          stories: [],
+          hasUnviewed: false,
+          latestCreatedAt: story.createdAt,
+        });
+      }
+      const entry = groupedMap.get(uId);
+      entry.stories.push(story);
+      entry.latestCreatedAt = story.createdAt;
+      // If current user hasn't viewed this story, mark hasUnviewed
+      if (!story.viewers.some((vId) => vId.toString() === userId.toString())) {
+        entry.hasUnviewed = true;
+      }
+    }
+
+    // Convert map to array: Put user's own stories first (if any), then sort others by unviewed status and latest date
+    const groupedArray = Array.from(groupedMap.values()).sort((a, b) => {
+      const aIsSelf = a.user._id.toString() === userId.toString();
+      const bIsSelf = b.user._id.toString() === userId.toString();
+      if (aIsSelf) return -1;
+      if (bIsSelf) return 1;
+      if (a.hasUnviewed && !b.hasUnviewed) return -1;
+      if (!a.hasUnviewed && b.hasUnviewed) return 1;
+      return new Date(b.latestCreatedAt) - new Date(a.latestCreatedAt);
+    });
+
+    res.json(groupedArray);
   } catch (err) {
-    console.error(err);
+    console.error("Error fetching feed stories:", err);
     res.status(500).json({ error: "Failed to fetch feed stories" });
   }
 };
@@ -89,29 +145,82 @@ export const getFeedStories = async (req, res) => {
 // Mark story as viewed
 export const markStoryViewed = async (req, res) => {
   try {
-    const viewerId = req.user?._id; // get viewerId from JWT middleware
+    const viewerId = req.user?._id;
     if (!viewerId) return res.status(401).json({ error: "User not logged in" });
 
     const { storyId } = req.body;
     const story = await Story.findById(storyId);
     if (!story) return res.status(404).json({ error: "Story not found" });
 
-    if (!story.viewers.includes(viewerId)) {
+    if (!story.viewers.some((id) => id.toString() === viewerId.toString())) {
       story.viewers.push(viewerId);
       await story.save();
     }
 
     res.json({ success: true });
   } catch (err) {
-    console.error(err);
+    console.error("Error marking story as viewed:", err);
     res.status(500).json({ error: "Failed to mark story as viewed" });
+  }
+};
+
+// Like / Unlike story
+export const likeStory = async (req, res) => {
+  try {
+    const userId = req.user?._id;
+    if (!userId) return res.status(401).json({ error: "User not logged in" });
+
+    const { storyId } = req.params;
+    const story = await Story.findById(storyId);
+    if (!story) return res.status(404).json({ error: "Story not found" });
+
+    const userLiked = story.likes.some((id) => id.toString() === userId.toString());
+    if (userLiked) {
+      story.likes = story.likes.filter((id) => id.toString() !== userId.toString());
+    } else {
+      story.likes.push(userId);
+    }
+    await story.save();
+
+    res.json({
+      success: true,
+      liked: !userLiked,
+      likesCount: story.likes.length,
+    });
+  } catch (err) {
+    console.error("Error liking story:", err);
+    res.status(500).json({ error: "Failed to like story" });
+  }
+};
+
+// Get story viewers (only creator can view)
+export const getStoryViewers = async (req, res) => {
+  try {
+    const userId = req.user?._id;
+    if (!userId) return res.status(401).json({ error: "User not logged in" });
+
+    const { storyId } = req.params;
+    const story = await Story.findById(storyId).populate(
+      "viewers",
+      "username fullName profileImg"
+    );
+    if (!story) return res.status(404).json({ error: "Story not found" });
+
+    if (story.userId.toString() !== userId.toString()) {
+      return res.status(403).json({ error: "Only the story owner can view the viewer list" });
+    }
+
+    res.json({ viewers: story.viewers || [] });
+  } catch (err) {
+    console.error("Error getting story viewers:", err);
+    res.status(500).json({ error: "Failed to fetch viewers" });
   }
 };
 
 // Delete a story
 export const deleteStory = async (req, res) => {
   try {
-    const userId = req.user?._id; // get userId from JWT middleware
+    const userId = req.user?._id;
     if (!userId) return res.status(401).json({ error: "User not logged in" });
 
     const { storyId } = req.params;
@@ -125,7 +234,7 @@ export const deleteStory = async (req, res) => {
     await Story.findByIdAndDelete(storyId);
     res.json({ success: true });
   } catch (err) {
-    console.error(err);
+    console.error("Error deleting story:", err);
     res.status(500).json({ error: "Failed to delete story" });
   }
 };

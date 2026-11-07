@@ -9,35 +9,74 @@ const getActivePostFilter = (extraConditions = {}) => ({
 	$or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
 });
 
-// CREATE POST (supports optional 24-hour expiration)
+const MAX_MEDIA_BYTES = 5 * 1024 * 1024; // 5MB strict limit
+
+// CREATE POST (supports text, image, video up to 5MB, poll, quotedPost, 24h expiration)
 export const createPost = async (req, res) => {
 	try {
-		const { text, img: imgBase64, is24hStory } = req.body;
+		const { text, img: mediaBase64, mediaType = "image", poll, quotedPost, is24hStory } = req.body;
 		const userId = req.user._id.toString();
 
-		if (!text && !imgBase64) {
-			return res.status(400).json({ error: "Post must have text or image" });
+		if (!text && !mediaBase64 && !poll && !quotedPost) {
+			return res.status(400).json({ error: "Post must have text, media, poll, or a quoted post" });
 		}
 
 		let img = null;
-		if (imgBase64) {
+		let detectedMediaType = mediaType === "video" ? "video" : "image";
+
+		if (mediaBase64) {
+			// Enforce 5MB limit check on mediaBase64
+			if (typeof mediaBase64 === "string" && mediaBase64.length * 0.75 > MAX_MEDIA_BYTES + 500000) {
+				return res.status(400).json({ error: "Media file exceeds 5MB limit. Please choose a smaller file." });
+			}
+
 			try {
-				if (imgBase64.startsWith("data:image/") || imgBase64.startsWith("http")) {
-					const uploadedResponse = await cloudinary.uploader.upload(imgBase64, {
+				if (
+					mediaBase64.startsWith("data:image/") ||
+					mediaBase64.startsWith("data:video/") ||
+					mediaBase64.startsWith("http")
+				) {
+					if (mediaBase64.startsWith("data:video/")) {
+						detectedMediaType = "video";
+					}
+					const uploadedResponse = await cloudinary.uploader.upload(mediaBase64, {
 						folder: "winker_posts",
 						resource_type: "auto",
 					});
 					img = uploadedResponse.secure_url;
+					if (uploadedResponse.resource_type === "video") {
+						detectedMediaType = "video";
+					}
 				} else {
-					img = imgBase64;
+					img = mediaBase64;
 				}
 			} catch (cloudErr) {
 				console.error("Cloudinary upload failed in createPost:", cloudErr.message);
-				if (imgBase64.startsWith("http")) {
-					img = imgBase64;
+				if (mediaBase64.startsWith("http")) {
+					img = mediaBase64;
 				} else {
-					return res.status(500).json({ error: "Failed to upload image. Please check image format." });
+					return res.status(500).json({ error: "Failed to upload media. Please check format and size (max 5MB)." });
 				}
+			}
+		}
+
+		// Handle poll options
+		let parsedPoll = null;
+		if (poll && poll.options && Array.isArray(poll.options)) {
+			const cleanOptions = poll.options
+				.filter((opt) => opt && (typeof opt === "string" ? opt.trim() : opt.text && opt.text.trim()))
+				.map((opt) => ({
+					text: typeof opt === "string" ? opt.trim() : opt.text.trim(),
+					votes: [],
+				}));
+
+			if (cleanOptions.length >= 2) {
+				const durationHours = Number(poll.durationHours) || 24;
+				parsedPoll = {
+					question: (poll.question || text || "Poll").trim(),
+					options: cleanOptions,
+					expiresAt: new Date(Date.now() + durationHours * 60 * 60 * 1000),
+				};
 			}
 		}
 
@@ -48,16 +87,64 @@ export const createPost = async (req, res) => {
 			user: userId,
 			text,
 			img,
+			mediaType: detectedMediaType,
+			poll: parsedPoll || undefined,
+			quotedPost: quotedPost || null,
 			is24hStory: Boolean(is24hStory),
 			expiresAt,
 		});
 		await newPost.save();
 
-		const populatedPost = await Post.findById(newPost._id).populate("user", "-password");
+		const populatedPost = await Post.findById(newPost._id)
+			.populate("user", "-password")
+			.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });
+
 		res.status(201).json(populatedPost);
 	} catch (error) {
 		console.error("Error in createPost:", error);
 		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+// VOTE ON A POLL
+export const votePoll = async (req, res) => {
+	try {
+		const { id: postId } = req.params;
+		const { optionIndex } = req.body;
+		const userId = req.user._id;
+
+		const post = await Post.findById(postId);
+		if (!post || !post.poll || !post.poll.options) {
+			return res.status(404).json({ error: "Poll not found" });
+		}
+
+		if (post.poll.expiresAt && new Date() > new Date(post.poll.expiresAt)) {
+			return res.status(400).json({ error: "This poll has already ended" });
+		}
+
+		const optIdx = Number(optionIndex);
+		if (isNaN(optIdx) || optIdx < 0 || optIdx >= post.poll.options.length) {
+			return res.status(400).json({ error: "Invalid option selected" });
+		}
+
+		// Remove user's vote from any previous options
+		post.poll.options.forEach((opt) => {
+			opt.votes = opt.votes.filter((vId) => vId.toString() !== userId.toString());
+		});
+
+		// Add vote to the chosen option
+		post.poll.options[optIdx].votes.push(userId);
+		await post.save();
+
+		const populated = await Post.findById(postId)
+			.populate("user", "-password")
+			.populate("comments.user", "-password")
+			.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });
+
+		res.status(200).json(populated);
+	} catch (error) {
+		console.error("Error in votePoll:", error);
+		res.status(500).json({ error: "Failed to submit vote" });
 	}
 };
 
@@ -68,16 +155,12 @@ export const deletePost = async (req, res) => {
 		if (!post) return res.status(404).json({ error: "Post not found" });
 
 		if (post.user.toString() !== req.user._id.toString()) {
-			return res.status(401).json({ error: "Not authorized" });
+			return res.status(401).json({ error: "You are not authorized to delete this post" });
 		}
 
-		if (post.img && post.img.includes("cloudinary.com")) {
-			try {
-				const imgId = post.img.split("/").pop().split(".")[0];
-				await cloudinary.uploader.destroy(imgId);
-			} catch (err) {
-				console.warn("Could not delete post image from Cloudinary:", err.message);
-			}
+		if (post.img) {
+			const imgId = post.img.split("/").pop().split(".")[0];
+			await cloudinary.uploader.destroy(imgId).catch(() => {});
 		}
 
 		await Post.findByIdAndDelete(req.params.id);
@@ -88,36 +171,35 @@ export const deletePost = async (req, res) => {
 	}
 };
 
-// COMMENT ON POST
+// COMMENT ON A POST
 export const commentOnPost = async (req, res) => {
 	try {
 		const { text } = req.body;
-		const postId = req.params.id || req.params.postId;
+		const postId = req.params.id;
+		const userId = req.user._id;
 
-		if (!text || !text.trim()) return res.status(400).json({ error: "Text is required" });
+		if (!text) return res.status(400).json({ error: "Text field is required" });
 
 		const post = await Post.findById(postId);
 		if (!post) return res.status(404).json({ error: "Post not found" });
 
-		post.comments.push({ user: req.user._id, text: text.trim(), createdAt: new Date() });
+		const comment = { user: userId, text };
+		post.comments.push(comment);
 		await post.save();
 
-		// Notify post author if not self
-		if (post.user && post.user.toString() !== req.user._id.toString()) {
-			await new Notification({
-				from: req.user._id,
-				to: post.user,
-				type: "comment",
-			}).save().catch((err) => console.error("Notification save failed:", err));
+		if (post.user && post.user.toString() !== userId.toString()) {
+			await new Notification({ from: userId, to: post.user, type: "comment" })
+				.save()
+				.catch((err) => console.error("Comment notification failed:", err));
 		}
 
 		const populatedPost = await Post.findById(postId)
 			.populate("user", "-password")
 			.populate("comments.user", "-password")
-			.populate("comments.replies.user", "-password");
+			.populate("comments.replies.user", "-password")
+			.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });
 
 		if (!populatedPost) return res.status(404).json({ error: "Post not found" });
-
 		res.status(200).json(populatedPost.comments);
 	} catch (error) {
 		console.error("Error in commentOnPost:", error);
@@ -148,7 +230,6 @@ export const replyToComment = async (req, res) => {
 
 		await post.save();
 
-		// Notify comment author if not self
 		if (comment.user && comment.user.toString() !== req.user._id.toString()) {
 			await new Notification({
 				from: req.user._id,
@@ -160,18 +241,18 @@ export const replyToComment = async (req, res) => {
 		const populatedPost = await Post.findById(postId)
 			.populate("user", "-password")
 			.populate("comments.user", "-password")
-			.populate("comments.replies.user", "-password");
+			.populate("comments.replies.user", "-password")
+			.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });
 
-		if (!populatedPost) return res.status(404).json({ error: "Post not found" });
-
-		res.status(200).json(populatedPost.comments);
+		const updatedComment = populatedPost.comments.id(commentId);
+		res.status(200).json(updatedComment.replies);
 	} catch (error) {
 		console.error("Error in replyToComment:", error);
 		res.status(500).json({ error: error.message || "Internal server error" });
 	}
 };
 
-// LIKE / UNLIKE COMMENT
+// LIKE / UNLIKE A COMMENT
 export const likeComment = async (req, res) => {
 	try {
 		const { postId, commentId } = req.params;
@@ -207,10 +288,10 @@ export const getPostById = async (req, res) => {
 		const post = await Post.findById(id)
 			.populate("user", "-password")
 			.populate("comments.user", "-password")
-			.populate("comments.replies.user", "-password");
+			.populate("comments.replies.user", "-password")
+			.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });
 
 		if (!post) return res.status(404).json({ error: "Post not found" });
-
 		res.status(200).json(post);
 	} catch (error) {
 		console.error("Error in getPostById:", error);
@@ -218,7 +299,7 @@ export const getPostById = async (req, res) => {
 	}
 };
 
-// LIKE / UNLIKE
+// LIKE / UNLIKE POST
 export const likeUnlikePost = async (req, res) => {
 	try {
 		const postId = req.params.id;
@@ -244,7 +325,9 @@ export const likeUnlikePost = async (req, res) => {
 			}
 		}
 
-		const updatedPost = await Post.findById(postId).populate("user", "-password");
+		const updatedPost = await Post.findById(postId)
+			.populate("user", "-password")
+			.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });
 		res.status(200).json(updatedPost.likes);
 	} catch (error) {
 		console.error("Error in likeUnlikePost:", error);
@@ -259,7 +342,8 @@ export const getAllPosts = async (req, res) => {
 			.sort({ createdAt: -1 })
 			.populate("user", "-password")
 			.populate("comments.user", "-password")
-			.populate("comments.replies.user", "-password");
+			.populate("comments.replies.user", "-password")
+			.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });
 
 		res.status(200).json(posts);
 	} catch (error) {
@@ -278,7 +362,8 @@ export const getFollowingPosts = async (req, res) => {
 			.sort({ createdAt: -1 })
 			.populate("user", "-password")
 			.populate("comments.user", "-password")
-			.populate("comments.replies.user", "-password");
+			.populate("comments.replies.user", "-password")
+			.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });
 
 		res.status(200).json(posts);
 	} catch (error) {
@@ -297,7 +382,8 @@ export const getUserPosts = async (req, res) => {
 			.sort({ createdAt: -1 })
 			.populate("user", "-password")
 			.populate("comments.user", "-password")
-			.populate("comments.replies.user", "-password");
+			.populate("comments.replies.user", "-password")
+			.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });
 
 		res.status(200).json(posts);
 	} catch (error) {
@@ -315,7 +401,8 @@ export const getLikedPosts = async (req, res) => {
 		const posts = await Post.find(getActivePostFilter({ _id: { $in: user.likedPosts } }))
 			.populate("user", "-password")
 			.populate("comments.user", "-password")
-			.populate("comments.replies.user", "-password");
+			.populate("comments.replies.user", "-password")
+			.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });
 
 		res.status(200).json(posts);
 	} catch (error) {
@@ -330,38 +417,38 @@ export const bookmarkPost = async (req, res) => {
 		const postId = req.params.id;
 		const userId = req.user._id;
 
-		const post = await Post.findById(postId);
-		if (!post) return res.status(404).json({ error: "Post not found" });
-
 		const user = await User.findById(userId);
 		if (!user) return res.status(404).json({ error: "User not found" });
 
-		const isBookmarked = user.bookmarks?.some((b) => b.toString() === postId.toString());
+		if (!user.bookmarkedPosts) user.bookmarkedPosts = [];
+		const isBookmarked = user.bookmarkedPosts.includes(postId);
 
 		if (isBookmarked) {
-			await User.findByIdAndUpdate(userId, { $pull: { bookmarks: postId } });
-			return res.status(200).json({ bookmarked: false, message: "Removed from bookmarks" });
+			await User.updateOne({ _id: userId }, { $pull: { bookmarkedPosts: postId } });
 		} else {
-			await User.findByIdAndUpdate(userId, { $addToSet: { bookmarks: postId } });
-			return res.status(200).json({ bookmarked: true, message: "Added to bookmarks" });
+			await User.updateOne({ _id: userId }, { $push: { bookmarkedPosts: postId } });
 		}
+
+		res.status(200).json({ bookmarked: !isBookmarked });
 	} catch (error) {
 		console.error("Error in bookmarkPost:", error);
 		res.status(500).json({ error: "Internal server error" });
 	}
 };
 
-// GET USER BOOKMARKED POSTS
+// GET BOOKMARKED POSTS
 export const getBookmarkedPosts = async (req, res) => {
 	try {
-		const user = await User.findById(req.user._id);
+		const userId = req.user._id;
+		const user = await User.findById(userId);
 		if (!user) return res.status(404).json({ error: "User not found" });
 
-		const posts = await Post.find(getActivePostFilter({ _id: { $in: user.bookmarks || [] } }))
+		const posts = await Post.find(getActivePostFilter({ _id: { $in: user.bookmarkedPosts || [] } }))
 			.sort({ createdAt: -1 })
 			.populate("user", "-password")
 			.populate("comments.user", "-password")
-			.populate("comments.replies.user", "-password");
+			.populate("comments.replies.user", "-password")
+			.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });
 
 		res.status(200).json(posts);
 	} catch (error) {

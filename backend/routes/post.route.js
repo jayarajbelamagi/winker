@@ -2,6 +2,7 @@ import express from "express";
 import { protectRoute } from "../middleware/protectRoute.js";
 import {
 	createPost,
+	votePoll,
 	deletePost,
 	commentOnPost,
 	replyToComment,
@@ -29,6 +30,7 @@ router.get("/likes/:id", protectRoute, getLikedPosts);
 
 // POST ACTIONS
 router.post("/create", protectRoute, createPost);
+router.post("/poll/:id/vote", protectRoute, votePoll);
 router.post("/like/:id", protectRoute, likeUnlikePost);
 router.post("/bookmark/:id", protectRoute, bookmarkPost);
 router.post("/comment/:id", protectRoute, commentOnPost);

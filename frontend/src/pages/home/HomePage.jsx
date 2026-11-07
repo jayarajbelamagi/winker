@@ -1,5 +1,6 @@
 import { useState } from "react";
 import StoryBar from "../../components/story/storyBar";
+import AudioSpacesBar from "../../components/spaces/AudioSpacesBar";
 import Posts from "../../components/common/Posts";
 import CreatePost from "./CreatePost";
 
@@ -36,14 +37,16 @@ const Home = ({ authUser }) => {
 
       {/* Story Section */}
       <div className="p-3 sm:p-4 border-b border-gray-700 overflow-x-auto">
-        {/* Stories from followed users */}
         <StoryBar authUser={authUser} />
       </div>
+
+      {/* Live Audio Spaces Bar */}
+      <AudioSpacesBar authUser={authUser} />
 
       {/* Create Post Input */}
       <CreatePost />
 
-      {/* Posts */}
+      {/* Posts Feed */}
       <Posts feedType={feedType} />
     </div>
   );
