@@ -636,28 +636,28 @@ export const exchangeSignal = async (req, res) => {
 		const { callId } = req.params;
 		const { senderType, signalData, candidate } = req.body; // senderType: "caller" | "receiver"
 
-		const call = await CallSession.findOne({ callId });
-		if (!call) return res.status(404).json({ error: "Call not found" });
-
+		const update = {};
 		if (signalData) {
-			if (senderType === "caller") {
-				call.callerSignal = signalData;
-			} else if (senderType === "receiver") {
-				call.receiverSignal = signalData;
-			}
+			if (senderType === "caller") update.callerSignal = signalData;
+			else if (senderType === "receiver") update.receiverSignal = signalData;
 		}
 
+		const push = {};
 		if (candidate) {
-			if (senderType === "caller") {
-				if (!Array.isArray(call.callerCandidates)) call.callerCandidates = [];
-				call.callerCandidates.push(candidate);
-			} else if (senderType === "receiver") {
-				if (!Array.isArray(call.receiverCandidates)) call.receiverCandidates = [];
-				call.receiverCandidates.push(candidate);
-			}
+			if (senderType === "caller") push.callerCandidates = candidate;
+			else if (senderType === "receiver") push.receiverCandidates = candidate;
 		}
 
-		await call.save();
+		const updateOp = {};
+		if (Object.keys(update).length > 0) updateOp.$set = update;
+		if (Object.keys(push).length > 0) updateOp.$push = push;
+
+		if (Object.keys(updateOp).length === 0) {
+			return res.status(200).json({ success: true });
+		}
+
+		const call = await CallSession.findOneAndUpdate({ callId }, updateOp, { new: true });
+		if (!call) return res.status(404).json({ error: "Call not found" });
 
 		res.status(200).json({ success: true });
 	} catch (error) {
