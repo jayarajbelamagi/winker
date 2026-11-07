@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import HomePage from "./pages/home/HomePage";
 import LoginPage from "./pages/auth/login/LoginPage";
@@ -33,8 +33,15 @@ import MobileFAB from "./components/common/MobileFAB";
 
 function App() {
   const queryClient = useQueryClient();
+  const location = useLocation();
   const [hasToken, setHasToken] = useState(() => Boolean(getStoredToken()));
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+
+  // Full-width wide open layout for messaging, Thook AI, and calls (like X and Instagram on Desktop)
+  const isWidePage =
+    location.pathname.startsWith("/messages") ||
+    location.pathname === "/chat" ||
+    location.pathname.startsWith("/calls");
 
   // Trigger non-blocking backend wake-up immediately on app launch
   useEffect(() => {
@@ -109,7 +116,11 @@ function App() {
         />
       )}
 
-      <div className="flex max-w-6xl mx-auto w-full relative min-h-screen pb-16 md:pb-0">
+      <div
+        className={`flex w-full mx-auto relative min-h-screen pb-16 md:pb-0 ${
+          isWidePage ? "max-w-[1600px] px-0 md:px-2 lg:px-4" : "max-w-6xl px-0"
+        }`}
+      >
         {authUser && <Sidebar />}
         <Routes>
           <Route
@@ -177,7 +188,7 @@ function App() {
             element={authUser ? <ChatPage authUser={authUser} /> : <Navigate to="/login" />}
           />
         </Routes>
-        {authUser && <RightPanel />}
+        {authUser && !isWidePage && <RightPanel />}
       </div>
 
       {/* Mobile Floating Action Button */}

@@ -139,9 +139,9 @@ const ChatPage = ({ authUser }) => {
   }, [history, isSending]);
 
   return (
-    <div className="flex-1 min-w-0 flex flex-col md:flex-row w-full h-[calc(100vh-3rem)] md:h-screen bg-stone-950 text-white relative overflow-hidden pb-14 md:pb-0 border-r border-gray-700">
+    <div className="flex-1 min-w-0 flex flex-col md:flex-row w-full h-[calc(100dvh-3.5rem)] md:h-screen bg-black text-white relative overflow-hidden pb-0 border-r border-gray-800">
       {/* DESKTOP SIDEBAR */}
-      <aside className="hidden md:flex flex-col w-64 bg-black/60 border-r border-gray-800 p-4 flex-shrink-0">
+      <aside className="hidden md:flex flex-col w-72 lg:w-80 bg-stone-950/80 backdrop-blur-md border-r border-gray-800 p-4 flex-shrink-0 h-full">
         <div className="flex items-center gap-2 mb-6">
           <span className="text-2xl text-sky-400">⚡</span>
           <span className="font-bold text-xl tracking-tight bg-gradient-to-r from-sky-400 to-blue-500 bg-clip-text text-transparent">
@@ -166,7 +166,7 @@ const ChatPage = ({ authUser }) => {
             <p className="text-xs text-stone-500 italic py-2">No queries in this session yet.</p>
           ) : (
             history
-              .slice(-10)
+              .slice(-15)
               .reverse()
               .map((chat, idx) => (
                 <div
@@ -175,7 +175,7 @@ const ChatPage = ({ authUser }) => {
                     setMessage(chat.userMessage);
                     messageInputRef.current?.focus();
                   }}
-                  className="p-2 text-xs text-stone-300 rounded-lg hover:bg-stone-800/80 cursor-pointer truncate transition"
+                  className="p-2.5 text-xs text-stone-300 rounded-xl hover:bg-stone-900 border border-transparent hover:border-stone-800 cursor-pointer truncate transition"
                   title={chat.userMessage}
                 >
                   {chat.userMessage}
@@ -258,112 +258,116 @@ const ChatPage = ({ authUser }) => {
       {/* MAIN CHAT AREA */}
       <main className="flex-1 flex flex-col h-full min-w-0 relative">
         {/* Top Chat Header */}
-        <header className="px-4 py-2.5 border-b border-gray-800 bg-black/60 backdrop-blur-md flex items-center justify-between flex-shrink-0 z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-sky-500 to-blue-600 flex items-center justify-center text-white shadow-md">
-              <AiFillRobot className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <h1 className="font-bold text-sm text-white">Thook AI</h1>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <header className="px-4 py-2.5 border-b border-gray-800 bg-black/60 backdrop-blur-md flex-shrink-0 z-10">
+          <div className="max-w-4xl mx-auto w-full flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-sky-500 to-blue-600 flex items-center justify-center text-white shadow-md">
+                <AiFillRobot className="w-5 h-5" />
               </div>
-              <p className="text-[11px] text-stone-400">Concise, friendly assistant</p>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <h1 className="font-bold text-sm text-white">Thook AI</h1>
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                </div>
+                <p className="text-[11px] text-stone-400">Concise, friendly assistant</p>
+              </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            {/* Mobile History Button */}
-            <button
-              onClick={() => setIsHistoryDrawerOpen(true)}
-              className="md:hidden p-2 rounded-full text-stone-400 hover:text-white hover:bg-stone-800 transition"
-              title="Chat History"
-            >
-              <RiHistoryLine className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Mobile History Button */}
+              <button
+                onClick={() => setIsHistoryDrawerOpen(true)}
+                className="md:hidden p-2 rounded-full text-stone-400 hover:text-white hover:bg-stone-800 transition"
+                title="Chat History"
+              >
+                <RiHistoryLine className="w-5 h-5" />
+              </button>
 
-            {/* New Chat Pill */}
-            <button
-              onClick={startNewChat}
-              className="btn btn-xs btn-outline rounded-full text-stone-300 hover:text-white gap-1"
-              title="Start fresh conversation"
-            >
-              <RiAddLine className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">New Chat</span>
-            </button>
+              {/* New Chat Pill */}
+              <button
+                onClick={startNewChat}
+                className="btn btn-xs btn-outline rounded-full text-stone-300 hover:text-white gap-1"
+                title="Start fresh conversation"
+              >
+                <RiAddLine className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">New Chat</span>
+              </button>
+            </div>
           </div>
         </header>
 
         {/* Scrollable Messages Container */}
         <div
           ref={chatDivRef}
-          className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4 scroll-smooth"
+          className="flex-1 overflow-y-auto p-3 sm:p-5 scroll-smooth"
         >
-          {history.length === 0 ? (
-            /* Welcome / Empty State */
-            <div className="h-full flex flex-col items-center justify-center text-center px-4 max-w-md mx-auto my-auto py-8">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-sky-500 to-blue-600 flex items-center justify-center text-3xl shadow-xl shadow-sky-500/20 mb-4 animate-bounce">
-                ⚡
-              </div>
-              <h2 className="text-xl font-bold text-white mb-2">How can I help you today?</h2>
-              <p className="text-xs text-stone-400 mb-6">
-                Ask me questions, explore trending topics, or get quick help with anything.
-              </p>
-
-              {/* Quick suggestion pills */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full text-left">
-                {SUGGESTIONS.map((s, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => sendMessage(s)}
-                    className="p-3 text-xs bg-stone-900/90 hover:bg-stone-800 border border-gray-800 rounded-xl text-stone-300 hover:text-white transition active:scale-95"
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            history.map((chat, idx) => (
-              <div key={idx} className="flex flex-col space-y-3">
-                {/* User Message (Right-aligned) */}
-                <div className="self-end max-w-[85%] sm:max-w-[75%] bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed shadow-md">
-                  {chat.userMessage}
+          <div className="max-w-4xl mx-auto w-full flex flex-col space-y-4">
+            {history.length === 0 ? (
+              /* Welcome / Empty State */
+              <div className="h-full flex flex-col items-center justify-center text-center px-4 max-w-md mx-auto my-auto py-8">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-sky-500 to-blue-600 flex items-center justify-center text-3xl shadow-xl shadow-sky-500/20 mb-4 animate-bounce">
+                  ⚡
                 </div>
+                <h2 className="text-xl font-bold text-white mb-2">How can I help you today?</h2>
+                <p className="text-xs text-stone-400 mb-6">
+                  Ask me questions, explore trending topics, or get quick help with anything.
+                </p>
 
-                {/* AI Response (Left-aligned) */}
-                <div className="self-start max-w-[90%] sm:max-w-[80%] flex items-start gap-2.5">
-                  <div className="w-7 h-7 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center text-sky-400 flex-shrink-0 mt-0.5">
-                    <AiOutlineRobot className="w-4 h-4" />
-                  </div>
-                  <div className="bg-stone-900 border border-gray-800 text-stone-100 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words shadow-md">
-                    {chat.aiReply || (
-                      <span className="flex items-center gap-1.5 text-stone-400 py-1">
-                        <span className="loading loading-dots loading-xs text-sky-400"></span>
-                        <span className="text-xs">Thinking...</span>
-                      </span>
-                    )}
-                  </div>
+                {/* Quick suggestion pills */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full text-left">
+                  {SUGGESTIONS.map((s, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => sendMessage(s)}
+                      className="p-3 text-xs bg-stone-900/90 hover:bg-stone-800 border border-gray-800 rounded-xl text-stone-300 hover:text-white transition active:scale-95"
+                    >
+                      {s}
+                    </button>
+                  ))}
                 </div>
               </div>
-            ))
-          )}
+            ) : (
+              history.map((chat, idx) => (
+                <div key={idx} className="flex flex-col space-y-3">
+                  {/* User Message (Right-aligned) */}
+                  <div className="self-end max-w-[85%] sm:max-w-[75%] bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed shadow-md">
+                    {chat.userMessage}
+                  </div>
 
-          {isSending && history[history.length - 1]?._temp === false && (
-            <div className="self-start flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center text-sky-400 flex-shrink-0">
-                <AiOutlineRobot className="w-4 h-4" />
+                  {/* AI Response (Left-aligned) */}
+                  <div className="self-start max-w-[90%] sm:max-w-[80%] flex items-start gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center text-sky-400 flex-shrink-0 mt-0.5">
+                      <AiOutlineRobot className="w-4 h-4" />
+                    </div>
+                    <div className="bg-stone-900 border border-gray-800 text-stone-100 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words shadow-md">
+                      {chat.aiReply || (
+                        <span className="flex items-center gap-1.5 text-stone-400 py-1">
+                          <span className="loading loading-dots loading-xs text-sky-400"></span>
+                          <span className="text-xs">Thinking...</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+
+            {isSending && history[history.length - 1]?._temp === false && (
+              <div className="self-start flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center text-sky-400 flex-shrink-0">
+                  <AiOutlineRobot className="w-4 h-4" />
+                </div>
+                <div className="bg-stone-900 border border-gray-800 rounded-2xl rounded-tl-sm px-4 py-2.5 shadow-md">
+                  <span className="loading loading-dots loading-xs text-sky-400"></span>
+                </div>
               </div>
-              <div className="bg-stone-900 border border-gray-800 rounded-2xl rounded-tl-sm px-4 py-2.5 shadow-md">
-                <span className="loading loading-dots loading-xs text-sky-400"></span>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Input Area (Pinned Above Mobile Navigation) */}
         <div className="p-2.5 sm:p-4 bg-black/80 backdrop-blur-md border-t border-gray-800 flex-shrink-0">
-          <div className="max-w-3xl mx-auto flex items-end gap-2 bg-stone-900/90 border border-gray-700 rounded-2xl px-3 py-1.5 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition shadow-inner">
+          <div className="max-w-4xl mx-auto flex items-end gap-2 bg-stone-900/90 border border-gray-700 rounded-2xl px-3 py-1.5 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition shadow-inner">
             <textarea
               ref={messageInputRef}
               value={message}
