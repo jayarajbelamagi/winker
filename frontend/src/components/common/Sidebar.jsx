@@ -15,6 +15,8 @@ import { AiOutlineRobot } from "react-icons/ai";
 import { BsBookmark } from "react-icons/bs";
 import { Link } from "react-router-dom";
 import { BiLogOut } from "react-icons/bi";
+import { RiMovie2Line } from "react-icons/ri";
+import { HiUserGroup } from "react-icons/hi2";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { apiFetch, clearStoredAuth } from "../../lib/api";
@@ -88,7 +90,29 @@ const Sidebar = () => {
 						</Link>
 					</li>
 
-					{/* 2. Explore & Trending */}
+					{/* 2. Reels (Vertical Video Feed) */}
+					<li className='flex justify-center md:justify-start'>
+						<Link
+							to='/reels'
+							className='flex gap-3.5 items-center hover:bg-stone-900 transition-all rounded-full duration-200 py-2.5 px-3 max-w-fit cursor-pointer group text-stone-200 hover:text-white'
+						>
+							<RiMovie2Line className='w-6 h-6 text-rose-500 group-hover:scale-110 transition' />
+							<span className='text-base hidden md:block font-medium'>Reels</span>
+						</Link>
+					</li>
+
+					{/* 3. Communities & Groups */}
+					<li className='flex justify-center md:justify-start'>
+						<Link
+							to='/communities'
+							className='flex gap-3.5 items-center hover:bg-stone-900 transition-all rounded-full duration-200 py-2.5 px-3 max-w-fit cursor-pointer group text-stone-200 hover:text-white'
+						>
+							<HiUserGroup className='w-6 h-6 text-primary group-hover:scale-110 transition' />
+							<span className='text-base hidden md:block font-medium'>Communities</span>
+						</Link>
+					</li>
+
+					{/* 4. Explore & Trending */}
 					<li className='flex justify-center md:justify-start'>
 						<Link
 							to='/explore'

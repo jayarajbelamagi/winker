@@ -92,14 +92,56 @@ export const followUnfollowUser = async (req, res) => {
 	}
 };
 
-// GET SUGGESTED USERS
+// GET SUGGESTED USERS ("People You May Know" Mutual Connections Algorithm)
 export const getSuggestedUsers = async (req, res) => {
 	try {
-		const user = await User.findById(req.user._id);
-		const users = await User.aggregate([{ $match: { _id: { $ne: user._id } } }, { $sample: { size: 10 } }]);
-		const suggestedUsers = users.filter(u => !user.following.includes(u._id)).slice(0, 4);
-		suggestedUsers.forEach(u => u.password = null);
-		res.status(200).json(suggestedUsers);
+		const currentUser = await User.findById(req.user._id).select("following");
+		if (!currentUser) return res.status(404).json({ error: "User not found" });
+
+		const myFollowing = (currentUser.following || []).map((id) => id.toString());
+
+		// Candidate pool: users not me and not already followed
+		const candidates = await User.find({
+			_id: { $ne: req.user._id, $nin: currentUser.following },
+		})
+			.select("fullName username profileImg bio followers following")
+			.populate("followers", "fullName username")
+			.lean();
+
+		// Calculate mutual connections for each candidate
+		const scoredCandidates = candidates.map((candidate) => {
+			const candidateFollowers = (candidate.followers || []).map((f) => ({
+				_id: f._id ? f._id.toString() : f.toString(),
+				fullName: f.fullName || "",
+				username: f.username || "",
+			}));
+
+			// Intersection: candidate's followers who are also in my following list
+			const mutuals = candidateFollowers.filter((f) => myFollowing.includes(f._id));
+
+			let mutualText = "";
+			if (mutuals.length === 1) {
+				mutualText = `Followed by @${mutuals[0].username}`;
+			} else if (mutuals.length === 2) {
+				mutualText = `Followed by @${mutuals[0].username} and @${mutuals[1].username}`;
+			} else if (mutuals.length > 2) {
+				mutualText = `Followed by @${mutuals[0].username} and ${mutuals.length - 1} others you know`;
+			}
+
+			return {
+				...candidate,
+				followers: undefined,
+				following: undefined,
+				mutualCount: mutuals.length,
+				mutualText,
+				mutualSample: mutuals.slice(0, 2),
+			};
+		});
+
+		// Sort by mutual count first (highest mutual friends), then random
+		scoredCandidates.sort((a, b) => b.mutualCount - a.mutualCount);
+
+		res.status(200).json(scoredCandidates.slice(0, 5));
 	} catch (error) {
 		console.error("Error in getSuggestedUsers:", error);
 		res.status(500).json({ error: error.message });

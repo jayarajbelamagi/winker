@@ -12,6 +12,9 @@ import ExplorePage from "./pages/explore/ExplorePage";
 import BookmarksPage from "./pages/bookmarks/BookmarksPage";
 import ResetPasswordPage from "./pages/auth/reset/ResetPasswordPage";
 import DeveloperPage from "./pages/developer/DeveloperPage";
+import ReelsPage from "./pages/reels/ReelsPage";
+import CommunitiesPage from "./pages/communities/CommunitiesPage";
+import CommunityDetailPage from "./pages/communities/CommunityDetailPage";
 
 import Sidebar from "./components/common/Sidebar";
 import RightPanel from "./components/common/RightPanel";
@@ -43,7 +46,8 @@ function App() {
   const isWidePage =
     location.pathname.startsWith("/messages") ||
     location.pathname === "/chat" ||
-    location.pathname.startsWith("/calls");
+    location.pathname.startsWith("/calls") ||
+    location.pathname.startsWith("/reels");
 
   const isDeveloperPage = location.pathname.startsWith("/developer");
 
@@ -158,6 +162,18 @@ function App() {
           <Route
             path="/calls"
             element={authUser ? <CallsPage authUser={authUser} /> : <Navigate to="/login" />}
+          />
+          <Route
+            path="/reels"
+            element={authUser ? <ReelsPage /> : <Navigate to="/login" />}
+          />
+          <Route
+            path="/communities"
+            element={authUser ? <CommunitiesPage /> : <Navigate to="/login" />}
+          />
+          <Route
+            path="/communities/:slug"
+            element={authUser ? <CommunityDetailPage /> : <Navigate to="/login" />}
           />
           <Route
             path="/explore"

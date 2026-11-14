@@ -75,10 +75,13 @@ const RightPanel = () => {
 				</div>
 			</div>
 
-			{/* Who to follow Section */}
+			{/* People You May Know / Who to follow Section */}
 			{suggestedUsers && suggestedUsers.length > 0 && (
 				<div className='bg-[#16181C] p-4 rounded-2xl border border-stone-800/80 shadow-md'>
-					<h3 className='font-bold text-base mb-3 text-white'>Who to follow</h3>
+					<div className='flex items-center justify-between mb-3'>
+						<h3 className='font-bold text-base text-white'>People You May Know</h3>
+						<span className='text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium'>Suggested</span>
+					</div>
 					<div className='flex flex-col gap-3.5'>
 						{isLoading && (
 							<>
@@ -104,12 +107,17 @@ const RightPanel = () => {
 											</div>
 										</div>
 										<div className='flex flex-col min-w-0'>
-											<span className='font-semibold text-xs text-white truncate max-w-[110px] group-hover:underline'>
+											<span className='font-semibold text-xs text-white truncate max-w-[130px] group-hover:underline'>
 												{user.fullName}
 											</span>
-											<span className='text-[11px] text-stone-500 truncate max-w-[110px]'>
+											<span className='text-[11px] text-stone-500 truncate max-w-[130px]'>
 												@{user.username}
 											</span>
+											{user.mutualText && (
+												<span className='text-[10px] text-primary truncate max-w-[130px] font-medium'>
+													{user.mutualText}
+												</span>
+											)}
 										</div>
 									</div>
 									<button

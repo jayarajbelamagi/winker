@@ -5,7 +5,7 @@ import { toast } from "react-hot-toast";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 
 import { IoSettingsOutline, IoCall, IoTimeOutline } from "react-icons/io5";
-import { FaUser, FaRegComment, FaReply } from "react-icons/fa";
+import { FaUser, FaRegComment, FaReply, FaAt } from "react-icons/fa";
 import { FaHeart } from "react-icons/fa6";
 import { MdCallMissed } from "react-icons/md";
 import { apiFetch } from "../../lib/api";
@@ -142,6 +142,11 @@ const NotificationPage = () => {
 												<MdCallMissed className='w-4 h-4' />
 											</div>
 										)}
+										{notification.type === "mention" && (
+											<div className='p-2 rounded-full bg-purple-500/20 text-purple-400'>
+												<FaAt className='w-4 h-4' />
+											</div>
+										)}
 									</div>
 
 									{/* User Info & Notification Text */}
@@ -177,6 +182,19 @@ const NotificationPage = () => {
 											{notification.type === "reply" && "replied to your comment"}
 											{notification.type === "call" && "called you"}
 											{notification.type === "missed_call" && "missed call from this user"}
+											{notification.type === "mention" && (
+												<span>
+													mentioned you in a post or comment.{" "}
+													{notification.post && (
+														<Link
+															to={`/post/${notification.post}`}
+															className='text-primary hover:underline font-semibold ml-1'
+														>
+															View post →
+														</Link>
+													)}
+												</span>
+											)}
 										</p>
 
 										{/* Notification Timing Display */}

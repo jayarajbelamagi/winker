@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { MdHomeFilled, MdOutlineHome } from "react-icons/md";
+import { RiMovie2Fill, RiMovie2Line } from "react-icons/ri";
 import {
   IoNotifications,
   IoNotificationsOutline,
@@ -19,6 +20,7 @@ const BottomNav = ({ authUser }) => {
   const pathname = location.pathname;
 
   const isHome = pathname === "/";
+  const isReels = pathname.startsWith("/reels");
   const isExplore = pathname.startsWith("/explore") || pathname.startsWith("/news");
   const isNotifications = pathname === "/notifications";
   const isMessages = pathname.startsWith("/messages");
@@ -26,7 +28,7 @@ const BottomNav = ({ authUser }) => {
   const isProfile = authUser?.username && pathname === `/profile/${authUser.username}`;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-black/90 backdrop-blur-lg border-t border-stone-800 md:hidden px-3 h-14 flex items-center justify-around">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-black/90 backdrop-blur-lg border-t border-stone-800 md:hidden px-2 h-14 flex items-center justify-around">
       {/* Home */}
       <Link
         to="/"
@@ -37,6 +39,19 @@ const BottomNav = ({ authUser }) => {
           <MdHomeFilled className="w-6 h-6 text-white" />
         ) : (
           <MdOutlineHome className="w-6 h-6 text-stone-400" />
+        )}
+      </Link>
+
+      {/* Reels (Short Video Feed) */}
+      <Link
+        to="/reels"
+        className="flex flex-col items-center justify-center p-2 transition"
+        title="Reels"
+      >
+        {isReels ? (
+          <RiMovie2Fill className="w-6 h-6 text-rose-500 scale-110 transition" />
+        ) : (
+          <RiMovie2Line className="w-6 h-6 text-stone-400 hover:text-rose-400 transition" />
         )}
       </Link>
 

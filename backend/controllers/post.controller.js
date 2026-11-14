@@ -14,7 +14,7 @@ const MAX_MEDIA_BYTES = 8 * 1024 * 1024; // 8MB strict limit
 // CREATE POST (supports text, image, video up to 8MB, poll, quotedPost, 24h expiration)
 export const createPost = async (req, res) => {
 	try {
-		const { text, img: mediaBase64, mediaType = "image", poll, quotedPost, is24hStory } = req.body;
+		const { text, img: mediaBase64, mediaType = "image", poll, quotedPost, is24hStory, communityId } = req.body;
 		const userId = req.user._id.toString();
 
 		if (!text && !mediaBase64 && !poll && !quotedPost) {
@@ -90,13 +90,40 @@ export const createPost = async (req, res) => {
 			mediaType: detectedMediaType,
 			poll: parsedPoll || undefined,
 			quotedPost: quotedPost || null,
+			community: communityId || null,
 			is24hStory: Boolean(is24hStory),
 			expiresAt,
 		});
 		await newPost.save();
 
+		// Trigger mention notifications if any users are tagged via @username
+		if (text && typeof text === "string") {
+			try {
+				const mentions = text.match(/@([a-zA-Z0-9_]+)/g);
+				if (mentions && mentions.length > 0) {
+					const uniqueUsernames = [...new Set(mentions.map((m) => m.slice(1).toLowerCase()))];
+					const taggedUsers = await User.find({
+						username: { $in: uniqueUsernames.map((u) => new RegExp(`^${u}$`, "i")) },
+						_id: { $ne: userId },
+					});
+
+					for (const taggedUser of taggedUsers) {
+						await new Notification({
+							from: userId,
+							to: taggedUser._id,
+							type: "mention",
+							post: newPost._id,
+						}).save().catch(() => {});
+					}
+				}
+			} catch (mentionErr) {
+				console.error("Mention notification error in createPost:", mentionErr);
+			}
+		}
+
 		const populatedPost = await Post.findById(newPost._id)
 			.populate("user", "-password")
+			.populate("community", "name slug avatar")
 			.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });
 
 		res.status(201).json(populatedPost);
@@ -216,6 +243,31 @@ export const commentOnPost = async (req, res) => {
 				.catch((err) => console.error("Comment notification failed:", err));
 		}
 
+		// Trigger mention notifications in comments
+		if (text && typeof text === "string") {
+			try {
+				const mentions = text.match(/@([a-zA-Z0-9_]+)/g);
+				if (mentions && mentions.length > 0) {
+					const uniqueUsernames = [...new Set(mentions.map((m) => m.slice(1).toLowerCase()))];
+					const taggedUsers = await User.find({
+						username: { $in: uniqueUsernames.map((u) => new RegExp(`^${u}$`, "i")) },
+						_id: { $ne: userId },
+					});
+
+					for (const taggedUser of taggedUsers) {
+						await new Notification({
+							from: userId,
+							to: taggedUser._id,
+							type: "mention",
+							post: postId,
+						}).save().catch(() => {});
+					}
+				}
+			} catch (mErr) {
+				console.error("Mention in comment error:", mErr);
+			}
+		}
+
 		const populatedPost = await Post.findById(postId)
 			.populate("user", "-password")
 			.populate("comments.user", "-password")
@@ -330,6 +382,7 @@ export const getPostById = async (req, res) => {
 		const { id } = req.params;
 		const post = await Post.findById(id)
 			.populate("user", "-password")
+			.populate("community", "name slug avatar")
 			.populate("comments.user", "-password")
 			.populate("comments.replies.user", "-password")
 			.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });
@@ -384,6 +437,7 @@ export const getAllPosts = async (req, res) => {
 		const posts = await Post.find(getActivePostFilter())
 			.sort({ createdAt: -1 })
 			.populate("user", "-password")
+			.populate("community", "name slug avatar")
 			.populate("comments.user", "-password")
 			.populate("comments.replies.user", "-password")
 			.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });
@@ -404,6 +458,7 @@ export const getFollowingPosts = async (req, res) => {
 		const posts = await Post.find(getActivePostFilter({ user: { $in: user.following } }))
 			.sort({ createdAt: -1 })
 			.populate("user", "-password")
+			.populate("community", "name slug avatar")
 			.populate("comments.user", "-password")
 			.populate("comments.replies.user", "-password")
 			.populate({ path: "quotedPost", populate: { path: "user", select: "-password" } });

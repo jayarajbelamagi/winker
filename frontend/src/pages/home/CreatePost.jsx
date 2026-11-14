@@ -13,7 +13,7 @@ import { compressImage } from "../../utils/imageCompressor";
 
 const MAX_MEDIA_SIZE = 8 * 1024 * 1024; // 8MB limit
 
-const CreatePost = ({ quotedPost: initialQuotedPost = null, onPostSuccess }) => {
+const CreatePost = ({ quotedPost: initialQuotedPost = null, communityId = null, onPostSuccess }) => {
 	const [text, setText] = useState("");
 	const [media, setMedia] = useState(null);
 	const [mediaType, setMediaType] = useState("image"); // "image" | "video"
@@ -43,7 +43,7 @@ const CreatePost = ({ quotedPost: initialQuotedPost = null, onPostSuccess }) => 
 		isError,
 		error,
 	} = useMutation({
-		mutationFn: async ({ text, img, mediaType, is24hStory, poll, quotedPostId }) => {
+		mutationFn: async ({ text, img, mediaType, is24hStory, poll, quotedPostId, communityId }) => {
 			try {
 				const res = await apiFetch("/api/posts/create", {
 					method: "POST",
@@ -54,6 +54,7 @@ const CreatePost = ({ quotedPost: initialQuotedPost = null, onPostSuccess }) => 
 						is24hStory,
 						poll: poll || undefined,
 						quotedPost: quotedPostId || undefined,
+						communityId: communityId || undefined,
 					}),
 				});
 				const data = await res.json();
@@ -115,6 +116,7 @@ const CreatePost = ({ quotedPost: initialQuotedPost = null, onPostSuccess }) => 
 			is24hStory,
 			poll: pollPayload,
 			quotedPostId: quotedPost?._id || null,
+			communityId,
 		});
 	};
 

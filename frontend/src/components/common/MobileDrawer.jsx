@@ -13,6 +13,8 @@ import { FaUser } from "react-icons/fa";
 import { BsBookmark } from "react-icons/bs";
 import { AiOutlineRobot } from "react-icons/ai";
 import { BiLogOut } from "react-icons/bi";
+import { RiMovie2Line } from "react-icons/ri";
+import { HiUserGroup } from "react-icons/hi2";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 import { apiFetch, clearStoredAuth } from "../../lib/api";
@@ -158,6 +160,26 @@ const MobileDrawer = ({ authUser, isOpen, onClose }) => {
               >
                 <IoCallOutline className="w-5 h-5 text-emerald-400" />
                 <span>Calls & History</span>
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/reels"
+                onClick={onClose}
+                className="flex items-center gap-4 p-3 rounded-xl hover:bg-stone-900 text-white font-medium text-base transition"
+              >
+                <RiMovie2Line className="w-5 h-5 text-rose-500" />
+                <span>Winker Reels</span>
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/communities"
+                onClick={onClose}
+                className="flex items-center gap-4 p-3 rounded-xl hover:bg-stone-900 text-white font-medium text-base transition"
+              >
+                <HiUserGroup className="w-5 h-5 text-primary" />
+                <span>Communities & Groups</span>
               </Link>
             </li>
             <li>

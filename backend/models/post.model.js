@@ -33,6 +33,12 @@ const postSchema = new mongoose.Schema(
 			ref: "Post",
 			default: null,
 		},
+		community: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "Community",
+			default: null,
+			index: true,
+		},
 		is24hStory: {
 			type: Boolean,
 			default: false,

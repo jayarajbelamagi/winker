@@ -16,6 +16,40 @@ import { formatPostDate } from "../../utils/date";
 import { apiFetch } from "../../lib/api";
 import { compressImage } from "../../utils/imageCompressor";
 
+// Format text with clickable @mentions and #hashtags
+export const renderFormattedText = (rawText) => {
+  if (!rawText) return null;
+  const tokens = rawText.split(/(@[a-zA-Z0-9_]+|#[a-zA-Z0-9_\u0900-\u097F]+)/g);
+  return tokens.map((token, index) => {
+    if (token.startsWith("@")) {
+      const username = token.slice(1);
+      return (
+        <Link
+          key={index}
+          to={`/profile/${username}`}
+          onClick={(e) => e.stopPropagation()}
+          className="text-primary hover:underline font-medium inline-block"
+        >
+          {token}
+        </Link>
+      );
+    }
+    if (token.startsWith("#")) {
+      return (
+        <Link
+          key={index}
+          to={`/explore?q=${encodeURIComponent(token)}`}
+          onClick={(e) => e.stopPropagation()}
+          className="text-sky-400 hover:underline font-medium inline-block"
+        >
+          {token}
+        </Link>
+      );
+    }
+    return token;
+  });
+};
+
 const Post = ({ post }) => {
   const [comment, setComment] = useState("");
   const [commentImg, setCommentImg] = useState(null);
@@ -321,11 +355,22 @@ const Post = ({ post }) => {
           )}
         </div>
 
+        {/* Community Badge (if posted in a community) */}
+        {post?.community && (
+          <Link
+            to={`/communities/${post.community.slug}`}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-stone-900 border border-stone-800 text-[11px] font-semibold text-primary hover:bg-stone-800 transition w-fit mt-1"
+          >
+            <span>🏢 c/{post.community.name}</span>
+          </Link>
+        )}
+
         {/* Post Text (Prominent focal point) */}
         <div className="flex flex-col gap-2.5 overflow-hidden mt-1.5">
           {post?.text && (
             <span className="text-[15px] sm:text-[16px] text-stone-100 leading-relaxed whitespace-pre-wrap break-words">
-              {post.text}
+              {renderFormattedText(post.text)}
             </span>
           )}
 
@@ -582,7 +627,7 @@ const Post = ({ post }) => {
 
                         {c.text && (
                           <div className="text-xs sm:text-sm text-stone-200 mt-1 whitespace-pre-wrap break-words">
-                            {c.text}
+                            {renderFormattedText(c.text)}
                           </div>
                         )}
 
@@ -675,7 +720,7 @@ const Post = ({ post }) => {
                               </div>
                               {r.text && (
                                 <p className="text-xs text-stone-300 mt-0.5 whitespace-pre-wrap break-words">
-                                  {r.text}
+                                  {renderFormattedText(r.text)}
                                 </p>
                               )}
                               {r.img && (
