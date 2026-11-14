@@ -26,8 +26,21 @@ const MobileTopBar = ({ authUser, onOpenDrawer }) => {
         <XSvg className="w-9 h-9 fill-white hover:opacity-90 transition" />
       </Link>
 
-      {/* Right: Balanced empty spacer to keep logo perfectly centered */}
-      <div className="w-9 h-9" />
+      {/* Right: Quick Install App button */}
+      <button
+        onClick={() => {
+          if (window.triggerWinkerInstall) {
+            window.triggerWinkerInstall();
+          } else if (window.winkerPwaPrompt) {
+            window.winkerPwaPrompt.prompt();
+          }
+        }}
+        className="px-2.5 py-1 rounded-full bg-primary/20 hover:bg-primary/30 border border-primary/50 text-primary text-[11px] font-bold flex items-center gap-1 active:scale-95 transition flex-shrink-0"
+        title="Install Winker App"
+      >
+        <span>📲</span>
+        <span>Install</span>
+      </button>
     </header>
   );
 };
