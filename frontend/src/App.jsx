@@ -35,6 +35,7 @@ import MobileTopBar from "./components/common/MobileTopBar";
 import MobileDrawer from "./components/common/MobileDrawer";
 import BottomNav from "./components/common/BottomNav";
 import MobileFAB from "./components/common/MobileFAB";
+import PwaInstallPrompt from "./components/common/PwaInstallPrompt";
 
 function App() {
   const queryClient = useQueryClient();
@@ -220,6 +221,9 @@ function App() {
 
       {/* Mobile Bottom Navigation Bar */}
       {authUser && !isDeveloperPage && <BottomNav authUser={authUser} />}
+
+      {/* PWA 1-Tap Mobile Install Prompt */}
+      {!isDeveloperPage && <PwaInstallPrompt />}
 
       <Toaster />
     </div>

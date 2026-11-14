@@ -15,6 +15,7 @@ import { AiOutlineRobot } from "react-icons/ai";
 import { BiLogOut } from "react-icons/bi";
 import { RiMovie2Line } from "react-icons/ri";
 import { HiUserGroup } from "react-icons/hi2";
+import { FiDownload } from "react-icons/fi";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 import { apiFetch, clearStoredAuth } from "../../lib/api";
@@ -201,6 +202,23 @@ const MobileDrawer = ({ authUser, isOpen, onClose }) => {
                 <IoCompassOutline className="w-5 h-5 text-primary" />
                 <span>Explore & Trends</span>
               </Link>
+            </li>
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.winkerPwaPrompt) {
+                    window.winkerPwaPrompt.prompt();
+                  } else {
+                    toast("To install: tap your browser menu (⋮) → 'Install App' or 'Add to Home screen'");
+                  }
+                  onClose();
+                }}
+                className="flex items-center gap-4 p-3 rounded-xl hover:bg-stone-900 text-primary font-bold text-base transition w-full text-left"
+              >
+                <FiDownload className="w-5 h-5 text-primary" />
+                <span>Install Winker App</span>
+              </button>
             </li>
             <li>
               <Link
