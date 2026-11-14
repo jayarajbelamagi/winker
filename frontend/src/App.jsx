@@ -11,6 +11,7 @@ import NewsPage from "./pages/news/NewsPage";
 import ExplorePage from "./pages/explore/ExplorePage";
 import BookmarksPage from "./pages/bookmarks/BookmarksPage";
 import ResetPasswordPage from "./pages/auth/reset/ResetPasswordPage";
+import DeveloperPage from "./pages/developer/DeveloperPage";
 
 import Sidebar from "./components/common/Sidebar";
 import RightPanel from "./components/common/RightPanel";
@@ -43,6 +44,8 @@ function App() {
     location.pathname.startsWith("/messages") ||
     location.pathname === "/chat" ||
     location.pathname.startsWith("/calls");
+
+  const isDeveloperPage = location.pathname.startsWith("/developer");
 
   // Trigger non-blocking backend wake-up immediately on app launch
   useEffect(() => {
@@ -101,7 +104,7 @@ function App() {
     <CallProvider authUser={authUser}>
       <div className="min-h-screen bg-black text-white flex flex-col">
       {/* Mobile Top Header */}
-      {authUser && (
+      {authUser && !isDeveloperPage && (
         <MobileTopBar
           authUser={authUser}
           onOpenDrawer={() => setMobileDrawerOpen(true)}
@@ -109,7 +112,7 @@ function App() {
       )}
 
       {/* Mobile Slide-Over Drawer */}
-      {authUser && (
+      {authUser && !isDeveloperPage && (
         <MobileDrawer
           authUser={authUser}
           isOpen={mobileDrawerOpen}
@@ -117,12 +120,16 @@ function App() {
         />
       )}
 
-      <div className="flex w-full justify-between relative min-h-screen pb-16 md:pb-0">
-        {authUser && <Sidebar />}
+      <div className={`flex w-full justify-between relative min-h-screen ${isDeveloperPage ? "pb-0" : "pb-16 md:pb-0"}`}>
+        {authUser && !isDeveloperPage && <Sidebar />}
         <Routes>
           <Route
             path="/"
             element={authUser ? <HomePage authUser={authUser} /> : <Navigate to="/login" />}
+          />
+          <Route
+            path="/developer"
+            element={<DeveloperPage />}
           />
           <Route
             path="/login"
@@ -189,14 +196,14 @@ function App() {
             element={authUser ? <ChatPage authUser={authUser} /> : <Navigate to="/login" />}
           />
         </Routes>
-        {authUser && !isWidePage && <RightPanel />}
+        {authUser && !isWidePage && !isDeveloperPage && <RightPanel />}
       </div>
 
       {/* Mobile Floating Action Button */}
-      {authUser && <MobileFAB />}
+      {authUser && !isDeveloperPage && <MobileFAB />}
 
       {/* Mobile Bottom Navigation Bar */}
-      {authUser && <BottomNav authUser={authUser} />}
+      {authUser && !isDeveloperPage && <BottomNav authUser={authUser} />}
 
       <Toaster />
     </div>

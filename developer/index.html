@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Winker · Developer Console</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230284c7'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z'/></svg>">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: '#0284c7',
+            darkbg: '#0a0a0c',
+            darkpanel: '#121317',
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Feather Icons CDN -->
+  <script src="https://unpkg.com/feather-icons"></script>
+  <style>
+    /* Custom scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0a0a0c; }
+    ::-webkit-scrollbar-thumb { background: #262626; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #404040; }
+  </style>
+</head>
+<body class="bg-darkbg text-stone-100 font-sans antialiased min-h-screen flex flex-col selection:bg-primary selection:text-white">
+
+  <!-- ================= PASSKEY GATE (LOCKED) ================= -->
+  <div id="gateScreen" class="fixed inset-0 z-50 bg-[#0a0a0c] flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-darkpanel border border-stone-800 rounded-3xl p-7 sm:p-8 shadow-2xl relative overflow-hidden">
+      <div class="w-14 h-14 rounded-2xl bg-stone-900 border border-stone-800 flex items-center justify-center text-primary text-2xl mx-auto mb-4">
+        <i data-feather="lock"></i>
+      </div>
+      <h2 class="text-2xl font-bold text-center text-white mb-1">Winker Developer Console</h2>
+      <p class="text-xs text-stone-400 text-center mb-6">
+        Inspect live MongoDB storage, view all registered users in detail, and browse collections.
+      </p>
+
+      <form id="gateForm" class="space-y-4">
+        <div>
+          <label class="text-[11px] font-semibold uppercase tracking-wider text-stone-400 block mb-1.5">
+            Developer Access Key
+          </label>
+          <div class="relative">
+            <input
+              id="gateKeyInput"
+              type="password"
+              placeholder="Enter key (default: winker-dev-2026)"
+              class="w-full px-4 py-2.5 bg-black border border-stone-800 rounded-xl text-sm text-white focus:outline-none focus:border-primary placeholder-stone-600 transition"
+              required
+            >
+          </div>
+        </div>
+
+        <div>
+          <label class="text-[11px] font-semibold uppercase tracking-wider text-stone-400 block mb-1.5">
+            Backend API Endpoint
+          </label>
+          <input
+            id="gateApiInput"
+            type="text"
+            value="https://winker-4.onrender.com"
+            class="w-full px-4 py-2 bg-black border border-stone-800 rounded-xl text-xs font-mono text-stone-300 focus:outline-none focus:border-primary transition"
+          >
+        </div>
+
+        <button
+          type="submit"
+          id="gateSubmitBtn"
+          class="w-full py-3 rounded-xl bg-primary hover:bg-sky-500 text-white font-semibold text-sm transition shadow-lg shadow-primary/30 flex items-center justify-center gap-2"
+        >
+          <span>Unlock Console</span>
+        </button>
+      </form>
+
+      <div id="gateError" class="mt-3 text-xs text-red-400 text-center hidden"></div>
+
+      <div class="mt-6 pt-4 border-t border-stone-800/80 text-center">
+        <span class="text-[11px] text-stone-500">
+          Default Key: <code class="text-primary font-mono bg-stone-900 px-2 py-0.5 rounded">winker-dev-2026</code>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= UNLOCKED CONSOLE DASHBOARD ================= -->
+  <div id="appContainer" class="hidden flex-1 flex flex-col min-h-screen">
+    <!-- Header -->
+    <header class="sticky top-0 z-30 bg-darkpanel/90 backdrop-blur-md border-b border-stone-800 px-4 sm:px-6 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-primary to-sky-600 flex items-center justify-center text-white font-bold shadow-md shadow-primary/20">
+          <i data-feather="database" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-sm sm:text-base font-bold text-white tracking-wide">
+              Winker Developer Console
+            </h1>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>Atlas Live</span>
+            </span>
+          </div>
+          <div class="text-[11px] text-stone-400 hidden sm:block">
+            Database: <code id="headerDbName" class="text-stone-300 font-mono">winker</code> · Host: <span id="headerDbHost" class="text-stone-300">MongoDB Atlas</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button
+          id="refreshBtn"
+          class="px-3 py-1.5 rounded-xl bg-stone-900 border border-stone-800 hover:bg-stone-800 text-stone-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition active:scale-95"
+        >
+          <i data-feather="refresh-cw" class="w-3.5 h-3.5"></i>
+          <span class="hidden sm:inline">Refresh</span>
+        </button>
+        <button
+          id="lockBtn"
+          class="px-3 py-1.5 rounded-xl bg-red-950/40 border border-red-500/30 hover:bg-red-900 text-red-300 text-xs font-semibold flex items-center gap-1.5 transition active:scale-95"
+        >
+          <i data-feather="lock" class="w-3.5 h-3.5"></i>
+          <span class="hidden sm:inline">Lock</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="bg-darkpanel border-b border-stone-800 px-4 sm:px-6 flex overflow-x-auto scrollbar-none gap-4 sm:gap-6 text-xs sm:text-sm font-semibold">
+      <button data-tab="overview" class="tab-btn py-3 border-b-2 border-primary text-primary flex items-center gap-1.5">
+        <i data-feather="activity" class="w-4 h-4"></i>
+        <span>Storage & Telemetry</span>
+      </button>
+      <button data-tab="users" class="tab-btn py-3 border-b-2 border-transparent text-stone-400 hover:text-white flex items-center gap-1.5">
+        <i data-feather="users" class="w-4 h-4"></i>
+        <span id="tabUsersTitle">Users Directory</span>
+      </button>
+      <button data-tab="collections" class="tab-btn py-3 border-b-2 border-transparent text-stone-400 hover:text-white flex items-center gap-1.5">
+        <i data-feather="layers" class="w-4 h-4"></i>
+        <span>Collections Explorer</span>
+      </button>
+      <button data-tab="rawStats" class="tab-btn py-3 border-b-2 border-transparent text-stone-400 hover:text-white flex items-center gap-1.5">
+        <i data-feather="server" class="w-4 h-4"></i>
+        <span>Raw db.stats()</span>
+      </button>
+    </nav>
+
+    <!-- Content Sections -->
+    <main class="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto space-y-6">
+
+      <!-- ================= SECTION 1: OVERVIEW ================= -->
+      <section id="section-overview" class="tab-section space-y-6">
+        <!-- Storage Hero Card -->
+        <div class="bg-gradient-to-br from-[#14161c] to-[#0e1014] border border-stone-800 rounded-3xl p-6 sm:p-7 shadow-xl">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <div>
+              <span class="text-[11px] uppercase tracking-wider text-stone-400 font-bold mb-1 block">
+                Database Total Storage Used
+              </span>
+              <div id="statTotalSize" class="text-3xl sm:text-4xl font-extrabold text-white font-mono">
+                Calculating...
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2 text-xs">
+              <div class="bg-stone-900 border border-stone-800 rounded-xl px-3 py-2">
+                <span class="text-stone-400 block text-[10px]">Data Size:</span>
+                <span id="statDataSize" class="font-bold text-white font-mono">0 B</span>
+              </div>
+              <div class="bg-stone-900 border border-stone-800 rounded-xl px-3 py-2">
+                <span class="text-stone-400 block text-[10px]">Allocated Storage:</span>
+                <span id="statStorageSize" class="font-bold text-white font-mono">0 B</span>
+              </div>
+              <div class="bg-stone-900 border border-stone-800 rounded-xl px-3 py-2">
+                <span class="text-stone-400 block text-[10px]">Index Size:</span>
+                <span id="statIndexSize" class="font-bold text-sky-400 font-mono">0 B</span>
+              </div>
+              <div class="bg-stone-900 border border-stone-800 rounded-xl px-3 py-2">
+                <span class="text-stone-400 block text-[10px]">Avg Doc Size:</span>
+                <span id="statAvgDocSize" class="font-bold text-stone-200 font-mono">0 B</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-stone-800/80">
+            <div class="bg-black/40 rounded-2xl p-3 border border-stone-800/60">
+              <span class="text-[11px] text-stone-400">Total Registered Users</span>
+              <div id="statTotalUsers" class="text-2xl font-bold text-white mt-0.5">0</div>
+              <span id="statUsersGrowth" class="text-[10px] text-emerald-400">+0 today</span>
+            </div>
+            <div class="bg-black/40 rounded-2xl p-3 border border-stone-800/60">
+              <span class="text-[11px] text-stone-400">Total Posts</span>
+              <div id="statTotalPosts" class="text-2xl font-bold text-white mt-0.5">0</div>
+              <span id="statPostsSub" class="text-[10px] text-stone-500">0 media</span>
+            </div>
+            <div class="bg-black/40 rounded-2xl p-3 border border-stone-800/60">
+              <span class="text-[11px] text-stone-400">Total Messages Sent</span>
+              <div id="statTotalMessages" class="text-2xl font-bold text-white mt-0.5">0</div>
+              <span id="statMessagesSub" class="text-[10px] text-stone-500">0 chats</span>
+            </div>
+            <div class="bg-black/40 rounded-2xl p-3 border border-stone-800/60">
+              <span class="text-[11px] text-stone-400">Active 24h Stories</span>
+              <div id="statActiveStories" class="text-2xl font-bold text-amber-300 mt-0.5">0</div>
+              <span id="statStoriesSub" class="text-[10px] text-stone-500">0 total</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Collections Table -->
+        <div class="bg-darkpanel border border-stone-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+          <h3 class="font-bold text-base text-white">Collections Breakdown</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="text-[11px] uppercase tracking-wider text-stone-400 bg-stone-900/60 border-b border-stone-800">
+                <tr>
+                  <th class="py-3 px-4">Collection</th>
+                  <th class="py-3 px-4">Key</th>
+                  <th class="py-3 px-4">Entries Count</th>
+                  <th class="py-3 px-4">Estimated Size</th>
+                  <th class="py-3 px-4 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="collectionsTbody" class="divide-y divide-stone-800/60 text-stone-300">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Server Runtime Telemetry -->
+        <div class="bg-darkpanel border border-stone-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+          <h3 class="font-bold text-base text-white flex items-center gap-2">
+            <i data-feather="server" class="text-emerald-400 w-4 h-4"></i>
+            <span>Server & Runtime Telemetry</span>
+          </h3>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div class="bg-stone-900/60 p-3 rounded-2xl border border-stone-800">
+              <span class="text-stone-400 text-[10px] block">Server Uptime</span>
+              <span id="statUptime" class="font-bold text-emerald-400 font-mono text-sm">0s</span>
+            </div>
+            <div class="bg-stone-900/60 p-3 rounded-2xl border border-stone-800">
+              <span class="text-stone-400 text-[10px] block">RAM Heap Used</span>
+              <span id="statRamHeap" class="font-bold text-white font-mono text-sm">0 MB</span>
+            </div>
+            <div class="bg-stone-900/60 p-3 rounded-2xl border border-stone-800">
+              <span class="text-stone-400 text-[10px] block">RAM RSS Total</span>
+              <span id="statRamRss" class="font-bold text-white font-mono text-sm">0 MB</span>
+            </div>
+            <div class="bg-stone-900/60 p-3 rounded-2xl border border-stone-800">
+              <span class="text-stone-400 text-[10px] block">Node Version</span>
+              <span id="statNodeVer" class="font-bold text-stone-300 font-mono text-sm">v20</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= SECTION 2: USERS DIRECTORY ================= -->
+      <section id="section-users" class="tab-section hidden space-y-5">
+        <div class="bg-darkpanel border border-stone-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 class="font-bold text-lg text-white">All Users Directory</h3>
+              <p class="text-xs text-stone-400">Displaying every user with full names, emails, dates, and engagement.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="exportCsvBtn" class="px-3 py-1.5 rounded-xl bg-stone-900 border border-stone-800 hover:bg-stone-800 text-stone-300 text-xs font-semibold flex items-center gap-1.5 transition">
+                <i data-feather="download" class="w-3.5 h-3.5 text-primary"></i>
+                <span>Export CSV</span>
+              </button>
+              <button id="exportJsonBtn" class="px-3 py-1.5 rounded-xl bg-stone-900 border border-stone-800 hover:bg-stone-800 text-stone-300 text-xs font-semibold flex items-center gap-1.5 transition">
+                <i data-feather="copy" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <span>Export JSON</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex flex-col sm:flex-row gap-3">
+            <div class="relative flex-1">
+              <input
+                id="userSearchInput"
+                type="text"
+                placeholder="Filter users by name, @username, email, or user ID..."
+                class="w-full pl-4 pr-4 py-2 bg-black border border-stone-800 rounded-xl text-xs text-white focus:outline-none focus:border-primary placeholder-stone-600 transition"
+              >
+            </div>
+            <select id="userSortSelect" class="bg-black border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-300">
+              <option value="createdAt">Sort by Joined Date</option>
+              <option value="fullName">Sort by Full Name</option>
+              <option value="username">Sort by Username</option>
+              <option value="followers">Sort by Followers</option>
+            </select>
+          </div>
+
+          <div class="overflow-x-auto rounded-2xl border border-stone-800">
+            <table class="w-full text-left text-xs">
+              <thead class="text-[11px] uppercase tracking-wider text-stone-400 bg-stone-900/80 border-b border-stone-800">
+                <tr>
+                  <th class="py-3 px-4">User</th>
+                  <th class="py-3 px-4">Email</th>
+                  <th class="py-3 px-4">Joined Date</th>
+                  <th class="py-3 px-4">Followers</th>
+                  <th class="py-3 px-4">Following</th>
+                  <th class="py-3 px-4">Likes / Bookmarks</th>
+                  <th class="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="usersTbody" class="divide-y divide-stone-800/60 text-stone-300">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= SECTION 3: COLLECTIONS EXPLORER ================= -->
+      <section id="section-collections" class="tab-section hidden space-y-5">
+        <div class="bg-darkpanel border border-stone-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 class="font-bold text-lg text-white">Database Collections Explorer</h3>
+              <p class="text-xs text-stone-400">Inspect raw documents across any table in the database.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-stone-400 font-semibold">Collection:</span>
+              <select id="collectionSelect" class="bg-black border border-stone-800 rounded-xl px-3 py-2 text-xs font-semibold text-white focus:outline-none focus:border-primary">
+                <option value="posts">📝 Posts</option>
+                <option value="users">👥 Users</option>
+                <option value="messages">💬 Messages</option>
+                <option value="conversations">📁 Conversations</option>
+                <option value="stories">📸 Stories</option>
+                <option value="spaces">🎙️ Audio Spaces</option>
+                <option value="notifications">🔔 Notifications</option>
+                <option value="profileviews">👁️ Profile Views</option>
+                <option value="calls">📞 Call Logs</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <input
+              id="collectionSearchInput"
+              type="text"
+              placeholder="Search in this collection..."
+              class="flex-1 px-4 py-2 bg-black border border-stone-800 rounded-xl text-xs text-white focus:outline-none focus:border-primary placeholder-stone-600 transition"
+            >
+            <button id="collectionSearchBtn" class="px-4 py-2 rounded-xl bg-primary hover:bg-sky-500 text-white text-xs font-semibold transition">
+              Search
+            </button>
+          </div>
+
+          <div class="overflow-x-auto rounded-2xl border border-stone-800">
+            <table class="w-full text-left text-xs">
+              <thead class="text-[11px] uppercase tracking-wider text-stone-400 bg-stone-900/80 border-b border-stone-800">
+                <tr>
+                  <th class="py-3 px-4">Document ID</th>
+                  <th class="py-3 px-4">Summary</th>
+                  <th class="py-3 px-4">Created At</th>
+                  <th class="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="collectionTbody" class="divide-y divide-stone-800/60 text-stone-300">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="flex items-center justify-between text-xs text-stone-400 pt-2">
+            <span>Total records: <strong id="collectionTotalCount" class="text-white font-mono">0</strong></span>
+            <div class="flex items-center gap-2">
+              <button id="colPrevPageBtn" class="px-3 py-1.5 rounded-lg bg-stone-900 border border-stone-800 text-white font-semibold transition">Prev</button>
+              <span id="colPageIndicator" class="font-mono text-stone-300">Page 1</span>
+              <button id="colNextPageBtn" class="px-3 py-1.5 rounded-lg bg-stone-900 border border-stone-800 text-white font-semibold transition">Next</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= SECTION 4: RAW DB STATS ================= -->
+      <section id="section-rawStats" class="tab-section hidden space-y-4">
+        <div class="bg-darkpanel border border-stone-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="font-bold text-base text-white">MongoDB Live db.stats() Output</h3>
+            <button id="copyRawStatsBtn" class="px-3 py-1.5 rounded-xl bg-stone-900 border border-stone-800 hover:bg-stone-800 text-stone-300 text-xs font-semibold flex items-center gap-1.5 transition">
+              <i data-feather="copy" class="w-3.5 h-3.5 text-primary"></i>
+              <span>Copy JSON</span>
+            </button>
+          </div>
+          <pre id="rawStatsCode" class="p-4 bg-black rounded-2xl border border-stone-800 font-mono text-xs text-emerald-400 overflow-x-auto max-h-[600px] leading-relaxed">
+Loading raw stats...
+          </pre>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= RAW DOCUMENT INSPECTOR MODAL ================= -->
+  <div id="inspectorModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm p-4 hidden flex items-center justify-center">
+    <div class="bg-darkpanel border border-stone-800 rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+      <div class="flex items-center justify-between px-5 py-3.5 border-b border-stone-800 bg-[#16181C]">
+        <span id="inspectorTitle" class="font-bold text-sm text-white truncate">Document Inspector</span>
+        <div class="flex items-center gap-2">
+          <button id="inspectorCopyBtn" class="px-3 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-semibold flex items-center gap-1.5 transition">
+            <i data-feather="copy" class="w-3.5 h-3.5"></i>
+            <span>Copy</span>
+          </button>
+          <button id="inspectorCloseBtn" class="p-1 rounded-full text-stone-400 hover:text-white hover:bg-stone-800 transition">
+            <i data-feather="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+      <div class="flex-1 overflow-y-auto p-4 bg-black">
+        <pre id="inspectorContent" class="font-mono text-xs text-sky-300 whitespace-pre-wrap break-words leading-relaxed"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Client-side Logic Script -->
+  <script>
+    let devKey = localStorage.getItem("winker_developer_key") || "";
+    let apiBase = localStorage.getItem("winker_api_base") || "https://winker-4.onrender.com";
+    let cachedStats = null;
+    let cachedUsers = [];
+    let curCollection = "posts";
+    let curPage = 1;
+    let inspectedRaw = null;
+
+    const gateScreen = document.getElementById("gateScreen");
+    const appContainer = document.getElementById("appContainer");
+    const gateForm = document.getElementById("gateForm");
+    const gateKeyInput = document.getElementById("gateKeyInput");
+    const gateApiInput = document.getElementById("gateApiInput");
+    const gateError = document.getElementById("gateError");
+
+    // Fetch helper
+    async function apiRequest(endpoint, options = {}) {
+      const url = `${apiBase.replace(/\/$/, "")}${endpoint}`;
+      const headers = {
+        "x-developer-key": devKey,
+        "Content-Type": "application/json",
+        ...(options.headers || {})
+      };
+      return fetch(url, { ...options, headers });
+    }
+
+    // Verify and Unlock
+    async function unlockConsole(key, endpoint) {
+      if (endpoint) apiBase = endpoint;
+      gateError.classList.add("hidden");
+      try {
+        const res = await fetch(`${apiBase.replace(/\/$/, "")}/api/developer/verify-key`, {
+          method: "POST",
+          headers: { "x-developer-key": key, "Content-Type": "application/json" }
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Invalid key");
+
+        devKey = key;
+        localStorage.setItem("winker_developer_key", key);
+        localStorage.setItem("winker_api_base", apiBase);
+
+        gateScreen.classList.add("hidden");
+        appContainer.classList.remove("hidden");
+        feather.replace();
+        initDashboard();
+      } catch (err) {
+        gateError.textContent = err.message || "Failed to connect to backend with key";
+        gateError.classList.remove("hidden");
+      }
+    }
+
+    gateForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      unlockConsole(gateKeyInput.value.trim(), gateApiInput.value.trim());
+    });
+
+    document.getElementById("lockBtn").addEventListener("click", () => {
+      localStorage.removeItem("winker_developer_key");
+      devKey = "";
+      gateScreen.classList.remove("hidden");
+      appContainer.classList.add("hidden");
+    });
+
+    // Auto-check stored key
+    if (devKey) {
+      gateKeyInput.value = devKey;
+      unlockConsole(devKey, apiBase);
+    }
+
+    // Tab Navigation
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tab = btn.dataset.tab;
+        document.querySelectorAll(".tab-btn").forEach((b) => {
+          b.classList.remove("border-primary", "text-primary");
+          b.classList.add("border-transparent", "text-stone-400");
+        });
+        btn.classList.add("border-primary", "text-primary");
+        btn.classList.remove("border-transparent", "text-stone-400");
+
+        document.querySelectorAll(".tab-section").forEach((sec) => sec.classList.add("hidden"));
+        document.getElementById(`section-${tab}`).classList.remove("hidden");
+
+        if (tab === "collections") loadCollection();
+      });
+    });
+
+    // Load Telemetry & Stats
+    async function loadTelemetry() {
+      try {
+        const res = await apiRequest("/api/developer/stats");
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        cachedStats = data;
+        const db = data.database;
+        const storage = db?.storage;
+
+        document.getElementById("headerDbName").textContent = db?.name || "winker";
+        document.getElementById("headerDbHost").textContent = db?.host || "MongoDB Atlas";
+
+        document.getElementById("statTotalSize").textContent = storage?.totalSizeFormatted || "0 B";
+        document.getElementById("statDataSize").textContent = storage?.dataSizeFormatted || "0 B";
+        document.getElementById("statStorageSize").textContent = storage?.storageSizeFormatted || "0 B";
+        document.getElementById("statIndexSize").textContent = storage?.indexSizeFormatted || "0 B";
+        document.getElementById("statAvgDocSize").textContent = storage?.avgDocumentSizeFormatted || "0 B";
+
+        document.getElementById("statTotalUsers").textContent = data.users?.total || 0;
+        document.getElementById("statUsersGrowth").textContent = `+${data.users?.growth?.last24Hours || 0} today`;
+
+        document.getElementById("statTotalPosts").textContent = data.activity?.posts?.total || 0;
+        document.getElementById("statPostsSub").textContent = `${data.activity?.posts?.withMedia || 0} media · ${data.activity?.posts?.polls || 0} polls`;
+
+        document.getElementById("statTotalMessages").textContent = data.activity?.messages?.total || 0;
+        document.getElementById("statMessagesSub").textContent = `${data.activity?.messages?.totalConversations || 0} chats`;
+
+        document.getElementById("statActiveStories").textContent = data.activity?.stories?.active || 0;
+        document.getElementById("statStoriesSub").textContent = `${data.activity?.stories?.total || 0} total`;
+
+        document.getElementById("statUptime").textContent = data.system?.uptimeFormatted || "0s";
+        document.getElementById("statRamHeap").textContent = data.system?.memory?.heapUsed || "0 MB";
+        document.getElementById("statRamRss").textContent = data.system?.memory?.rss || "0 MB";
+        document.getElementById("statNodeVer").textContent = data.system?.nodeVersion || "v20";
+
+        // Render collections table
+        const tbody = document.getElementById("collectionsTbody");
+        tbody.innerHTML = (db?.collections || []).map((col) => `
+          <tr class="hover:bg-stone-900/40 transition">
+            <td class="py-3 px-4 font-semibold text-white flex items-center gap-2">
+              <span>${col.icon || "📁"}</span>
+              <span>${col.name}</span>
+            </td>
+            <td class="py-3 px-4 font-mono text-stone-400">${col.key}</td>
+            <td class="py-3 px-4 font-mono font-bold text-white">${col.count}</td>
+            <td class="py-3 px-4 font-mono text-primary">${col.formattedSize || "Dynamic"}</td>
+            <td class="py-3 px-4 text-right">
+              <button onclick="switchCollection('${col.key}')" class="px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-semibold transition">
+                Explore →
+              </button>
+            </td>
+          </tr>
+        `).join("");
+
+        document.getElementById("rawStatsCode").textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    // Load Users
+    async function loadUsers() {
+      try {
+        const sort = document.getElementById("userSortSelect").value;
+        const res = await apiRequest(`/api/developer/users?sortBy=${sort}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        cachedUsers = data.users || [];
+        document.getElementById("tabUsersTitle").textContent = `Users Directory (${cachedUsers.length})`;
+        renderUsers(cachedUsers);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function renderUsers(users) {
+      const q = (document.getElementById("userSearchInput").value || "").toLowerCase();
+      const filtered = users.filter((u) =>
+        u.fullName?.toLowerCase().includes(q) ||
+        u.username?.toLowerCase().includes(q) ||
+        u.email?.toLowerCase().includes(q) ||
+        u._id?.toLowerCase().includes(q)
+      );
+
+      const tbody = document.getElementById("usersTbody");
+      if (!filtered.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-12 text-center text-stone-500">No users found.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map((u) => `
+        <tr class="hover:bg-stone-900/40 transition">
+          <td class="py-3 px-4">
+            <div class="flex items-center gap-3">
+              <img src="${u.profileImg || '/avatar-placeholder.png'}" class="w-8 h-8 rounded-full object-cover border border-stone-700 flex-shrink-0">
+              <div class="min-w-0">
+                <span class="font-bold text-white block truncate">${u.fullName}</span>
+                <span class="text-[11px] text-stone-400 font-mono">@${u.username}</span>
+              </div>
+            </div>
+          </td>
+          <td class="py-3 px-4 font-mono text-stone-300">${u.email || '<span class="text-stone-600 italic">None</span>'}</td>
+          <td class="py-3 px-4 font-mono text-stone-400">${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}</td>
+          <td class="py-3 px-4 font-mono font-bold text-white">${u.followersCount}</td>
+          <td class="py-3 px-4 font-mono text-stone-300">${u.followingCount}</td>
+          <td class="py-3 px-4 font-mono text-[11px]">
+            <span class="text-pink-400">♥ ${u.likedPostsCount}</span> · <span class="text-sky-400">★ ${u.bookmarksCount}</span>
+          </td>
+          <td class="py-3 px-4 text-right">
+            <button onclick="inspectDoc('User @${u.username}', ${JSON.stringify(u).replace(/"/g, '&quot;')})" class="p-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 mr-1" title="Inspect JSON">
+              <i data-feather="eye" class="w-3.5 h-3.5"></i>
+            </button>
+            <button onclick="deleteDoc('users', '${u._id}', '@${u.username}')" class="p-1.5 rounded-lg bg-red-950/40 border border-red-500/30 hover:bg-red-900 text-red-300" title="Delete User">
+              <i data-feather="trash-2" class="w-3.5 h-3.5"></i>
+            </button>
+          </td>
+        </tr>
+      `).join("");
+      feather.replace();
+    }
+
+    document.getElementById("userSearchInput").addEventListener("input", () => renderUsers(cachedUsers));
+    document.getElementById("userSortSelect").addEventListener("change", () => loadUsers());
+
+    // Switch Collection
+    window.switchCollection = (colKey) => {
+      document.getElementById("collectionSelect").value = colKey;
+      curCollection = colKey;
+      curPage = 1;
+      document.querySelector('[data-tab="collections"]').click();
+    };
+
+    // Load Collection Entries
+    async function loadCollection() {
+      curCollection = document.getElementById("collectionSelect").value;
+      const q = document.getElementById("collectionSearchInput").value || "";
+      try {
+        const res = await apiRequest(`/api/developer/collection/${curCollection}?page=${curPage}&limit=40&q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        document.getElementById("collectionTotalCount").textContent = data.totalCount || 0;
+        document.getElementById("colPageIndicator").textContent = `Page ${curPage} of ${data.totalPages || 1}`;
+
+        const tbody = document.getElementById("collectionTbody");
+        if (!data.items?.length) {
+          tbody.innerHTML = `<tr><td colspan="4" class="py-12 text-center text-stone-500">No entries in ${curCollection}.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = data.items.map((item) => {
+          const summary = item.text || item.fullName || item.groupName || item.title || item.callId || item.type || "Document Record";
+          return `
+            <tr class="hover:bg-stone-900/40 transition">
+              <td class="py-3 px-4 font-mono text-primary font-semibold">${item._id}</td>
+              <td class="py-3 px-4 max-w-md truncate font-semibold text-white">
+                ${summary} ${item.img ? '<span class="text-amber-400 font-mono text-[10px]">📷</span>' : ''}
+              </td>
+              <td class="py-3 px-4 font-mono text-stone-400">${item.createdAt ? new Date(item.createdAt).toLocaleString() : '—'}</td>
+              <td class="py-3 px-4 text-right">
+                <button onclick="inspectDoc('${curCollection} / ${item._id}', ${JSON.stringify(item).replace(/"/g, '&quot;')})" class="px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-semibold mr-1">
+                  Inspect JSON
+                </button>
+                <button onclick="deleteDoc('${curCollection}', '${item._id}')" class="p-1 rounded-lg bg-red-950/40 border border-red-500/30 hover:bg-red-900 text-red-300">
+                  <i data-feather="trash-2" class="w-3.5 h-3.5"></i>
+                </button>
+              </td>
+            </tr>
+          `;
+        }).join("");
+        feather.replace();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    document.getElementById("collectionSelect").addEventListener("change", () => {
+      curPage = 1;
+      loadCollection();
+    });
+    document.getElementById("collectionSearchBtn").addEventListener("click", () => {
+      curPage = 1;
+      loadCollection();
+    });
+    document.getElementById("colPrevPageBtn").addEventListener("click", () => {
+      if (curPage > 1) { curPage--; loadCollection(); }
+    });
+    document.getElementById("colNextPageBtn").addEventListener("click", () => {
+      curPage++; loadCollection();
+    });
+
+    // Document Inspector Modal
+    window.inspectDoc = (title, data) => {
+      inspectedRaw = data;
+      document.getElementById("inspectorTitle").textContent = title;
+      document.getElementById("inspectorContent").textContent = JSON.stringify(data, null, 2);
+      document.getElementById("inspectorModal").classList.remove("hidden");
+    };
+
+    document.getElementById("inspectorCloseBtn").addEventListener("click", () => {
+      document.getElementById("inspectorModal").classList.add("hidden");
+    });
+
+    document.getElementById("inspectorCopyBtn").addEventListener("click", () => {
+      if (inspectedRaw) {
+        navigator.clipboard.writeText(JSON.stringify(inspectedRaw, null, 2));
+        alert("JSON copied to clipboard!");
+      }
+    });
+
+    // Delete Document
+    window.deleteDoc = async (collection, id, label) => {
+      if (!confirm(`Are you sure you want to permanently delete this ${label || 'entry'} (${id})?`)) return;
+      try {
+        const res = await apiRequest(`/api/developer/entry/${collection}/${id}`, { method: "DELETE" });
+        if (!res.ok) throw new Error("Delete failed");
+        alert("Deleted successfully");
+        if (collection === "users") loadUsers();
+        else loadCollection();
+        loadTelemetry();
+      } catch (err) {
+        alert(err.message);
+      }
+    };
+
+    // Exports
+    document.getElementById("exportCsvBtn").addEventListener("click", () => {
+      if (!cachedUsers.length) return alert("No users to export");
+      const headers = ["_id", "fullName", "username", "email", "followersCount", "followingCount", "createdAt"];
+      const rows = cachedUsers.map((u) => headers.map((h) => `"${(u[h] || '').toString().replace(/"/g, '""')}"`).join(","));
+      const csv = [headers.join(","), ...rows].join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `winker-users-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+    });
+
+    document.getElementById("exportJsonBtn").addEventListener("click", () => {
+      if (!cachedUsers.length) return alert("No users to export");
+      const blob = new Blob([JSON.stringify(cachedUsers, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `winker-users-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+    });
+
+    document.getElementById("copyRawStatsBtn").addEventListener("click", () => {
+      if (cachedStats) {
+        navigator.clipboard.writeText(JSON.stringify(cachedStats, null, 2));
+        alert("Telemetry JSON copied to clipboard!");
+      }
+    });
+
+    document.getElementById("refreshBtn").addEventListener("click", () => {
+      loadTelemetry();
+      loadUsers();
+      if (!document.getElementById("section-collections").classList.contains("hidden")) {
+        loadCollection();
+      }
+    });
+
+    function initDashboard() {
+      loadTelemetry();
+      loadUsers();
+    }
+  </script>
+</body>
+</html>

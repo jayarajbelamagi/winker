@@ -14,6 +14,7 @@ import chatRoutes from "./routes/chat.route.js";
 import newsRoutes from "./routes/news.route.js";
 import messageRoutes from "./routes/message.route.js";
 import spaceRoutes from "./routes/space.route.js";
+import developerRoutes from "./routes/developer.route.js";
 
 import connectMongoDB from "./db/connectMongoDB.js";
 
@@ -65,7 +66,13 @@ const corsOptions = {
 	},
 	credentials: true,
 	methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-	allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+	allowedHeaders: [
+		"Content-Type",
+		"Authorization",
+		"X-Requested-With",
+		"Accept",
+		"x-developer-key",
+	],
 };
 
 // Apply CORS & Handle Preflight
@@ -100,6 +107,7 @@ app.use("/api/chat", chatRoutes);
 app.use("/api/news", newsRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/spaces", spaceRoutes);
+app.use("/api/developer", developerRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {
