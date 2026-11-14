@@ -1,4 +1,4 @@
-const DEVELOPER_KEY = process.env.DEVELOPER_KEY || "winker-dev-2026";
+const DEVELOPER_KEY = process.env.DEVELOPER_KEY || "Jayaraj@18Komal";
 
 export const developerAuth = (req, res, next) => {
 	try {

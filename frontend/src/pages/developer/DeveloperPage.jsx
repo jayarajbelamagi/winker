@@ -26,7 +26,7 @@ import { IoCloseSharp } from "react-icons/io5";
 import { apiFetch } from "../../lib/api";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 
-const DEFAULT_DEV_KEY = "winker-dev-2026";
+const DEFAULT_DEV_KEY = "Jayaraj@18Komal";
 
 const DeveloperPage = () => {
   const [developerKey, setDeveloperKey] = useState(
@@ -299,7 +299,7 @@ const DeveloperPage = () => {
                 <FiKey className="absolute left-3.5 top-3.5 text-stone-500 w-4 h-4" />
                 <input
                   type="password"
-                  placeholder="Enter developer key (default: winker-dev-2026)"
+                  placeholder="Enter developer key"
                   value={keyInput}
                   onChange={(e) => setKeyInput(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 bg-black border border-stone-800 rounded-xl text-sm text-white focus:outline-none focus:border-primary placeholder-stone-600 transition"
@@ -326,10 +326,7 @@ const DeveloperPage = () => {
 
           <div className="mt-6 pt-4 border-t border-stone-800/80 text-center">
             <span className="text-[11px] text-stone-500">
-              Default access key:{" "}
-              <code className="text-primary font-mono bg-stone-900 px-2 py-0.5 rounded">
-                winker-dev-2026
-              </code>
+              Protected Administrator & Developer Gateway
             </span>
           </div>
         </div>
